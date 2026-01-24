@@ -279,7 +279,7 @@ class PipelineOrchestrator:
 
             # Add data dictionary to context if provided
             if data_dict:
-                context.set("data_dict", data_dict)
+                context.set("dictionary", data_dict)
                 logger.info(f"Data dictionary loaded with {len(data_dict)} entries")
 
             # Stage 1: Ingest

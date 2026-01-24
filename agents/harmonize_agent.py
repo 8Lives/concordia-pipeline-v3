@@ -419,43 +419,59 @@ class HarmonizeAgent(AgentBase):
         # Also check dictionary
         dict_map = dictionary.get("SEX", {}).get("codes", {})
 
-        # Track values that need LLM resolution
+        # OPTIMIZATION: Pre-resolve unique values with LLM before applying to all rows
+        # This avoids calling LLM once per row
+        unique_values = df["SEX"].dropna().astype(str).str.strip().unique()
+        llm_resolutions = {}
         unresolved_values = set()
-        llm_used = False
+
+        for val in unique_values:
+            val_upper = val.upper()
+            # Check if already resolvable without LLM
+            if val_upper in dict_map or val_upper in code_map:
+                continue
+            val_mixed = to_mixed_case(val_upper)
+            if val_mixed in valid_values:
+                continue
+
+            # Need LLM resolution - do it once per unique value
+            if self.use_llm_fallback and self.llm_service and self.llm_service.is_configured:
+                resolved = self._resolve_with_llm("SEX", val, valid_values)
+                if resolved:
+                    llm_resolutions[val] = resolved
+                else:
+                    unresolved_values.add(val)
+            else:
+                unresolved_values.add(val)
+
+        llm_used = bool(llm_resolutions)
 
         def harmonize_sex(x):
-            nonlocal llm_used
             if pd.isna(x):
                 return None
 
-            val = str(x).strip().upper()
-            original_val = str(x).strip()
+            val = str(x).strip()
+            val_upper = val.upper()
 
             # Try dictionary first
-            if val in dict_map:
-                return to_mixed_case(dict_map[val])
+            if val_upper in dict_map:
+                return to_mixed_case(dict_map[val_upper])
 
             # Try code mappings
-            if val in code_map:
-                return code_map[val]
+            if val_upper in code_map:
+                return code_map[val_upper]
 
             # Already a valid value?
-            val_mixed = to_mixed_case(val)
+            val_mixed = to_mixed_case(val_upper)
             if val_mixed in valid_values:
                 return val_mixed
 
-            # Try LLM resolution for unrecognized values
-            if self.use_llm_fallback and self.llm_service:
-                resolved = self._resolve_with_llm("SEX", original_val, valid_values)
-                if resolved:
-                    llm_used = True
-                    return resolved
-
-            # Track unresolved for reporting
-            unresolved_values.add(original_val)
+            # Use pre-resolved LLM value
+            if val in llm_resolutions:
+                return llm_resolutions[val]
 
             # Return as-is with mixed case
-            return to_mixed_case(val)
+            return val_mixed
 
         result = df["SEX"].apply(harmonize_sex)
         lineage["transformation"] = "Decode codes, normalize to mixed case"
@@ -463,7 +479,8 @@ class HarmonizeAgent(AgentBase):
             "valid_values": valid_values,
             "dictionary_used": bool(dict_map),
             "llm_used": llm_used,
-            "unresolved_values": list(unresolved_values)[:10]  # Limit for readability
+            "llm_resolutions": llm_resolutions,
+            "unresolved_values": list(unresolved_values)[:10]
         }
         return result, lineage
 
@@ -489,53 +506,76 @@ class HarmonizeAgent(AgentBase):
             "Unknown"
         ]
 
+        # OPTIMIZATION: Pre-resolve unique values with LLM before applying to all rows
+        unique_values = df["RACE"].dropna().astype(str).str.strip().unique()
+        llm_resolutions = {}
         unresolved_values = set()
-        llm_used = False
+
+        for val in unique_values:
+            val_upper = val.upper()
+
+            # Check if already resolvable without LLM
+            if val_upper in dict_map:
+                continue
+            if val_upper in norm_map:
+                continue
+
+            # Check if already a valid value
+            val_mixed = to_mixed_case(val_upper)
+            is_valid = any(val_mixed.lower() == v.lower() for v in valid_values)
+            if is_valid:
+                continue
+
+            # Need LLM resolution - do it once per unique value
+            if self.use_llm_fallback and self.llm_service and self.llm_service.is_configured:
+                resolved = self._resolve_with_llm("RACE", val, valid_values)
+                if resolved:
+                    llm_resolutions[val] = resolved
+                else:
+                    unresolved_values.add(val)
+            else:
+                unresolved_values.add(val)
+
+        llm_used = bool(llm_resolutions)
 
         def harmonize_race(x):
-            nonlocal llm_used
             if pd.isna(x):
                 return None
 
-            val = str(x).strip().upper()
-            original_val = str(x).strip()
+            val = str(x).strip()
+            val_upper = val.upper()
 
             # Try dictionary first
-            if val in dict_map:
-                decoded = dict_map[val]
-                # Apply normalization to decoded value
+            if val_upper in dict_map:
+                decoded = dict_map[val_upper]
                 decoded_upper = decoded.upper()
                 if decoded_upper in norm_map:
                     return norm_map[decoded_upper]
                 return to_mixed_case(decoded)
 
             # Try normalization map
-            if val in norm_map:
-                return norm_map[val]
+            if val_upper in norm_map:
+                return norm_map[val_upper]
 
             # Check if already a valid value
-            val_mixed = to_mixed_case(val)
+            val_mixed = to_mixed_case(val_upper)
             for valid in valid_values:
                 if val_mixed.lower() == valid.lower():
                     return valid
 
-            # Try LLM resolution for complex cases
-            if self.use_llm_fallback and self.llm_service:
-                resolved = self._resolve_with_llm("RACE", original_val, valid_values)
-                if resolved:
-                    llm_used = True
-                    return resolved
-
-            unresolved_values.add(original_val)
+            # Use pre-resolved LLM value
+            if val in llm_resolutions:
+                return llm_resolutions[val]
 
             # Return as mixed case
-            return to_mixed_case(val)
+            return val_mixed
 
         result = df["RACE"].apply(harmonize_race)
         lineage["transformation"] = "Decode codes, normalize, mixed case"
         lineage["transformation_details"] = {
             "valid_values": valid_values,
             "llm_used": llm_used,
+            "llm_resolutions": llm_resolutions,
             "unresolved_values": list(unresolved_values)[:10]
         }
         return result, lineage
