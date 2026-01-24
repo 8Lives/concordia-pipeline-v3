@@ -22,6 +22,7 @@ import os
 import time
 from pathlib import Path
 from datetime import datetime
+from typing import Dict
 import json
 import logging
 
@@ -75,6 +76,65 @@ try:
 except ImportError as e:
     PIPELINE_AVAILABLE = False
     IMPORT_ERROR = str(e)
+
+
+def parse_data_dictionary(df: pd.DataFrame) -> Dict:
+    """
+    Parse a data dictionary DataFrame into the format expected by harmonize agent.
+
+    Expected input formats:
+    1. Columns: variable, code, decode (or value, label)
+    2. Columns: variable_name, source_value, target_value
+
+    Output format:
+    {
+        "SEX": {"codes": {"1": "Male", "2": "Female"}},
+        "RACE": {"codes": {"W": "White", "B": "Black"}}
+    }
+    """
+    result = {}
+
+    # Normalize column names to lowercase
+    df.columns = [c.lower().strip() for c in df.columns]
+
+    # Try to identify the variable, code, and decode columns
+    var_col = None
+    code_col = None
+    decode_col = None
+
+    # Common column name patterns
+    var_patterns = ['variable', 'var', 'variable_name', 'varname', 'field', 'column']
+    code_patterns = ['code', 'value', 'source', 'source_value', 'coded_value', 'id']
+    decode_patterns = ['decode', 'label', 'target', 'target_value', 'description', 'decoded_value', 'meaning']
+
+    for col in df.columns:
+        col_lower = col.lower()
+        if var_col is None and any(p in col_lower for p in var_patterns):
+            var_col = col
+        elif code_col is None and any(p in col_lower for p in code_patterns):
+            code_col = col
+        elif decode_col is None and any(p in col_lower for p in decode_patterns):
+            decode_col = col
+
+    if var_col is None or code_col is None or decode_col is None:
+        logger.warning(f"Could not identify dictionary columns. Found: {list(df.columns)}")
+        logger.warning(f"Identified: var={var_col}, code={code_col}, decode={decode_col}")
+        # Return empty dict if we can't parse
+        return {}
+
+    # Build the dictionary
+    for _, row in df.iterrows():
+        var = str(row[var_col]).strip().upper() if pd.notna(row[var_col]) else None
+        code = str(row[code_col]).strip().upper() if pd.notna(row[code_col]) else None
+        decode = str(row[decode_col]).strip() if pd.notna(row[decode_col]) else None
+
+        if var and code and decode:
+            if var not in result:
+                result[var] = {"codes": {}}
+            result[var]["codes"][code] = decode
+
+    logger.info(f"Parsed data dictionary with {len(result)} variables")
+    return result
 
 
 def init_session_state():
@@ -400,14 +460,17 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict, data_dict_file=None
     if data_dict_file is not None:
         try:
             if data_dict_file.name.endswith('.csv'):
-                data_dict = pd.read_csv(data_dict_file).to_dict(orient='records')
+                dict_df = pd.read_csv(data_dict_file)
+                data_dict = parse_data_dictionary(dict_df)
             elif data_dict_file.name.endswith(('.xlsx', '.xls')):
-                data_dict = pd.read_excel(data_dict_file).to_dict(orient='records')
+                dict_df = pd.read_excel(data_dict_file)
+                data_dict = parse_data_dictionary(dict_df)
             elif data_dict_file.name.endswith('.json'):
                 data_dict = json.load(data_dict_file)
-            logger.info(f"Loaded data dictionary with {len(data_dict)} entries")
+            logger.info(f"Loaded data dictionary: {data_dict}")
         except Exception as e:
             st.warning(f"Could not load data dictionary: {e}")
+            logger.exception("Data dictionary load error")
             data_dict = None
 
     # Read uploaded file
@@ -491,18 +554,29 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict, data_dict_file=None
     )
 
     # Run pipeline (no spinner - we have the progress bar)
-    result = orchestrator.run(
-        input_df=df,
-        trial_id=trial_id,
-        skip_qc=config["skip_qc"],
-        data_dict=data_dict
-    )
+    try:
+        result = orchestrator.run(
+            input_df=df,
+            trial_id=trial_id,
+            skip_qc=config["skip_qc"],
+            data_dict=data_dict
+        )
+    except Exception as e:
+        logger.exception("Pipeline run failed with exception")
+        st.error(f"Pipeline error: {str(e)}")
+        import traceback
+        with st.expander("Error Details"):
+            st.code(traceback.format_exc())
+        return None
 
     # Clear progress elements after completion
     if result.success:
         progress_bar.progress(1.0, text="🎉 Pipeline complete!")
     else:
         progress_bar.progress(1.0, text="❌ Pipeline failed")
+        if result.errors:
+            for err in result.errors:
+                st.error(f"Error: {err}")
 
     st.session_state.pipeline_result = result
     return result
