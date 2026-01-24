@@ -418,6 +418,7 @@ class HarmonizeAgent(AgentBase):
 
         # Also check dictionary
         dict_map = dictionary.get("SEX", {}).get("codes", {})
+        logger.info(f"SEX harmonization: dictionary keys={list(dictionary.keys())}, dict_map={dict_map}")
 
         # OPTIMIZATION: Pre-resolve unique values with LLM before applying to all rows
         # This avoids calling LLM once per row
@@ -657,7 +658,10 @@ class HarmonizeAgent(AgentBase):
         lineage: Dict
     ) -> Tuple[pd.Series, Dict]:
         """Harmonize ETHNIC - decode and normalize case."""
+        # Check for ETHNIC or ETHGRP in dictionary (common alternative names)
         dict_map = dictionary.get("ETHNIC", {}).get("codes", {})
+        if not dict_map:
+            dict_map = dictionary.get("ETHGRP", {}).get("codes", {})
 
         def harmonize_ethnic(x):
             if pd.isna(x):

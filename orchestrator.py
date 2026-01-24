@@ -280,7 +280,11 @@ class PipelineOrchestrator:
             # Add data dictionary to context if provided
             if data_dict:
                 context.set("dictionary", data_dict)
-                logger.info(f"Data dictionary loaded with {len(data_dict)} entries")
+                logger.info(f"Data dictionary loaded with {len(data_dict)} variables: {list(data_dict.keys())}")
+                # Log sample of each variable's codes
+                for var, var_data in data_dict.items():
+                    codes = var_data.get("codes", {})
+                    logger.info(f"  {var}: {len(codes)} codes - {dict(list(codes.items())[:3])}...")
 
             # Stage 1: Ingest
             self._update_progress("ingest", "running", "Loading data...", 0.1)

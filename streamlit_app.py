@@ -78,13 +78,11 @@ except ImportError as e:
     IMPORT_ERROR = str(e)
 
 
-def parse_data_dictionary(df: pd.DataFrame) -> Dict:
+def parse_data_dictionary_with_llm(df: pd.DataFrame, llm_service) -> Dict:
     """
-    Parse a data dictionary DataFrame into the format expected by harmonize agent.
+    Use LLM to interpret a data dictionary and extract code mappings.
 
-    Expected input formats:
-    1. Columns: variable, code, decode (or value, label)
-    2. Columns: variable_name, source_value, target_value
+    This approach is flexible and handles different sponsor formats without hardcoded rules.
 
     Output format:
     {
@@ -92,49 +90,82 @@ def parse_data_dictionary(df: pd.DataFrame) -> Dict:
         "RACE": {"codes": {"W": "White", "B": "Black"}}
     }
     """
-    result = {}
-
-    # Normalize column names to lowercase
-    df.columns = [c.lower().strip() for c in df.columns]
-
-    # Try to identify the variable, code, and decode columns
-    var_col = None
-    code_col = None
-    decode_col = None
-
-    # Common column name patterns
-    var_patterns = ['variable', 'var', 'variable_name', 'varname', 'field', 'column']
-    code_patterns = ['code', 'value', 'source', 'source_value', 'coded_value', 'id']
-    decode_patterns = ['decode', 'label', 'target', 'target_value', 'description', 'decoded_value', 'meaning']
-
-    for col in df.columns:
-        col_lower = col.lower()
-        if var_col is None and any(p in col_lower for p in var_patterns):
-            var_col = col
-        elif code_col is None and any(p in col_lower for p in code_patterns):
-            code_col = col
-        elif decode_col is None and any(p in col_lower for p in decode_patterns):
-            decode_col = col
-
-    if var_col is None or code_col is None or decode_col is None:
-        logger.warning(f"Could not identify dictionary columns. Found: {list(df.columns)}")
-        logger.warning(f"Identified: var={var_col}, code={code_col}, decode={decode_col}")
-        # Return empty dict if we can't parse
+    if not llm_service or not llm_service.is_configured:
+        logger.warning("LLM not available for dictionary parsing, returning empty dict")
         return {}
 
-    # Build the dictionary
-    for _, row in df.iterrows():
-        var = str(row[var_col]).strip().upper() if pd.notna(row[var_col]) else None
-        code = str(row[code_col]).strip().upper() if pd.notna(row[code_col]) else None
-        decode = str(row[decode_col]).strip() if pd.notna(row[decode_col]) else None
+    # Convert DataFrame to a string representation for LLM
+    # Limit rows to avoid token limits
+    df_sample = df.head(100)
+    df_str = df_sample.to_string()
 
-        if var and code and decode:
-            if var not in result:
-                result[var] = {"codes": {}}
-            result[var]["codes"][code] = decode
+    # If too long, truncate
+    if len(df_str) > 15000:
+        df_str = df_str[:15000] + "\n... (truncated)"
 
-    logger.info(f"Parsed data dictionary with {len(result)} variables")
-    return result
+    system_prompt = """You are a clinical data dictionary parser. Your task is to extract coded value mappings from data dictionaries used in clinical trials.
+
+Data dictionaries come in many formats from different sponsors. Common patterns include:
+- Variable names in one column, codes in another (e.g., "1 = Male", "2 = Female")
+- Separate columns for variable, code, and decode/label
+- Continuation rows where variable name is blank but more codes follow
+- Format columns like "$SEX" or "$RACE" indicating coded variables
+
+Focus on extracting mappings for demographic variables: SEX, RACE, ETHNIC/ETHGRP, COUNTRY, ARM/ARMCD, and any other coded variables you can identify.
+
+Return ONLY valid JSON with no markdown formatting."""
+
+    user_prompt = f"""Parse this clinical data dictionary and extract all code-to-decode mappings.
+
+Data Dictionary Content:
+{df_str}
+
+Return a JSON object with this structure:
+{{
+    "VARIABLE_NAME": {{
+        "codes": {{
+            "CODE1": "Decoded Value 1",
+            "CODE2": "Decoded Value 2"
+        }}
+    }}
+}}
+
+Important:
+- Use UPPERCASE for variable names and codes
+- Include ALL coded variables you can find (SEX, RACE, ETHNIC, ETHGRP, COUNTRY, ARM, etc.)
+- If a variable has codes like "1 = Male", extract as {{"1": "Male"}}
+- Include both old and new code systems if present (e.g., RACE might have codes 1-3 and 11-15)"""
+
+    try:
+        response = llm_service.call(
+            prompt=user_prompt,
+            system=system_prompt,
+            max_tokens=4096,
+            temperature=0.0,
+            json_mode=True
+        )
+
+        if response.success and response.parsed_data:
+            result = response.parsed_data
+            # Ensure proper structure
+            for var in list(result.keys()):
+                if not isinstance(result[var], dict):
+                    del result[var]
+                elif "codes" not in result[var]:
+                    result[var] = {"codes": result[var]} if isinstance(result[var], dict) else {"codes": {}}
+
+            logger.info(f"LLM parsed dictionary with {len(result)} variables")
+            for var, data in result.items():
+                codes = data.get("codes", {})
+                logger.info(f"  {var}: {len(codes)} codes")
+            return result
+        else:
+            logger.error(f"LLM dictionary parsing failed: {response.error}")
+            return {}
+
+    except Exception as e:
+        logger.exception(f"Error parsing dictionary with LLM: {e}")
+        return {}
 
 
 def init_session_state():
@@ -455,23 +486,22 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict, data_dict_file=None
     st.session_state.progress_log = []
     st.session_state.pipeline_result = None
 
-    # Read data dictionary if provided
+    # Read data dictionary if provided - we'll parse it with LLM after creating orchestrator
+    dict_df = None
     data_dict = None
     if data_dict_file is not None:
         try:
             if data_dict_file.name.endswith('.csv'):
                 dict_df = pd.read_csv(data_dict_file)
-                data_dict = parse_data_dictionary(dict_df)
             elif data_dict_file.name.endswith(('.xlsx', '.xls')):
                 dict_df = pd.read_excel(data_dict_file)
-                data_dict = parse_data_dictionary(dict_df)
             elif data_dict_file.name.endswith('.json'):
+                # JSON is already structured, use directly
                 data_dict = json.load(data_dict_file)
-            logger.info(f"Loaded data dictionary: {data_dict}")
+            logger.info(f"Loaded dictionary file: {data_dict_file.name}")
         except Exception as e:
             st.warning(f"Could not load data dictionary: {e}")
             logger.exception("Data dictionary load error")
-            data_dict = None
 
     # Read uploaded file
     try:
@@ -552,6 +582,28 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict, data_dict_file=None
         progress_callback=streamlit_progress_callback,
         embedding_provider=config["embedding_provider"]
     )
+
+    # Parse data dictionary using LLM if we have a DataFrame to parse
+    if dict_df is not None and data_dict is None:
+        progress_bar.progress(0.05, text="🔧 INIT: Parsing data dictionary with LLM...")
+
+        # Initialize LLM for dictionary parsing
+        if config["use_llm"]:
+            try:
+                from llm.service import LLMService
+                llm_for_dict = LLMService()
+                if llm_for_dict.is_configured:
+                    data_dict = parse_data_dictionary_with_llm(dict_df, llm_for_dict)
+                    if data_dict:
+                        st.success(f"✅ Dictionary parsed: {len(data_dict)} variables extracted")
+                        logger.info(f"LLM parsed dictionary: {list(data_dict.keys())}")
+                    else:
+                        st.warning("Could not extract mappings from dictionary")
+                else:
+                    st.warning("LLM not configured - dictionary will not be used")
+            except Exception as e:
+                logger.exception("Failed to parse dictionary with LLM")
+                st.warning(f"Dictionary parsing failed: {e}")
 
     # Run pipeline (no spinner - we have the progress bar)
     try:
