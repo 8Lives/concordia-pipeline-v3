@@ -416,8 +416,9 @@ class HarmonizeAgent(AgentBase):
         code_map = self._get_code_mappings("SEX")
         valid_values = self._get_valid_values("SEX") or ["Male", "Female", "Unknown"]
 
-        # Also check dictionary
+        # Also check dictionary - normalize keys to uppercase
         dict_map = dictionary.get("SEX", {}).get("codes", {})
+        dict_map = {str(k).upper(): v for k, v in dict_map.items()}
         logger.info(f"SEX harmonization: dictionary keys={list(dictionary.keys())}, dict_map={dict_map}")
 
         # OPTIMIZATION: Pre-resolve unique values with LLM before applying to all rows
@@ -494,6 +495,9 @@ class HarmonizeAgent(AgentBase):
         """Harmonize RACE using RAG-retrieved or fallback mappings, with LLM fallback."""
         norm_map = self._get_code_mappings("RACE")
         dict_map = dictionary.get("RACE", {}).get("codes", {})
+        # Normalize dict_map keys to uppercase
+        dict_map = {str(k).upper(): v for k, v in dict_map.items()}
+        logger.info(f"RACE harmonization: dict_map={dict_map}")
 
         # Valid CDISC race categories
         valid_values = [
@@ -663,20 +667,30 @@ class HarmonizeAgent(AgentBase):
         if not dict_map:
             dict_map = dictionary.get("ETHGRP", {}).get("codes", {})
 
+        # Normalize dict_map keys to uppercase
+        dict_map = {str(k).upper(): v for k, v in dict_map.items()}
+
+        logger.info(f"ETHNIC harmonization: dict_map={dict_map}")
+
         def harmonize_ethnic(x):
             if pd.isna(x):
                 return None
 
             val = str(x).strip()
+            val_upper = val.upper()
 
             # Try dictionary
-            if val.upper() in dict_map:
-                return to_mixed_case(dict_map[val.upper()])
+            if val_upper in dict_map:
+                return to_mixed_case(dict_map[val_upper])
 
             return to_mixed_case(val)
 
         result = df["ETHNIC"].apply(harmonize_ethnic)
         lineage["transformation"] = "Decode codes, normalize to mixed case"
+        lineage["transformation_details"] = {
+            "dictionary_used": bool(dict_map),
+            "dict_codes": list(dict_map.keys())[:10]
+        }
         return result, lineage
 
     def _harmonize_country(

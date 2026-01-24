@@ -334,6 +334,151 @@ def render_progress():
         st.info(f"{emoji} **{latest['stage'].upper()}**: {latest['message']}")
 
 
+def create_results_zip(result: PipelineResult) -> bytes:
+    """Create a ZIP file containing all pipeline results."""
+    import io
+    import zipfile
+
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        trial_id = result.metadata.get("trial_id", "output")
+
+        # Add harmonized data
+        if result.harmonized_data is not None:
+            csv_data = result.harmonized_data.to_csv(index=False)
+            zf.writestr(f"{trial_id}_harmonized.csv", csv_data)
+
+        # Add QC report
+        if result.qc_report is not None and len(result.qc_report) > 0:
+            qc_csv = result.qc_report.to_csv(index=False)
+            zf.writestr(f"{trial_id}_qc_report.csv", qc_csv)
+
+        # Add mapping log
+        if result.mapping_log:
+            mapping_json = json.dumps(result.mapping_log, indent=2, default=str)
+            zf.writestr(f"{trial_id}_mapping_log.json", mapping_json)
+
+        # Add lineage
+        if result.lineage:
+            lineage_json = json.dumps(result.lineage, indent=2, default=str)
+            zf.writestr(f"{trial_id}_lineage.json", lineage_json)
+
+        # Add review result
+        if result.review_result:
+            review_json = json.dumps(result.review_result, indent=2, default=str)
+            zf.writestr(f"{trial_id}_review.json", review_json)
+
+        # Add metadata
+        metadata_json = json.dumps(result.metadata, indent=2, default=str)
+        zf.writestr(f"{trial_id}_metadata.json", metadata_json)
+
+        # Add transformation report (summary)
+        transformation_report = create_transformation_report(result)
+        zf.writestr(f"{trial_id}_transformation_report.txt", transformation_report)
+
+    zip_buffer.seek(0)
+    return zip_buffer.getvalue()
+
+
+def create_transformation_report(result: PipelineResult) -> str:
+    """Create a human-readable transformation report."""
+    lines = [
+        "=" * 60,
+        "CONCORDIA PIPELINE v3 - TRANSFORMATION REPORT",
+        "=" * 60,
+        "",
+        f"Trial ID: {result.metadata.get('trial_id', 'Unknown')}",
+        f"Timestamp: {result.metadata.get('timestamp', 'Unknown')}",
+        f"Status: {'SUCCESS' if result.success else 'FAILED'}",
+        f"Rows Processed: {result.metadata.get('rows_processed', 0)}",
+        f"Execution Time: {result.execution_time_ms / 1000:.2f} seconds",
+        "",
+        "-" * 60,
+        "CONFIGURATION",
+        "-" * 60,
+        f"RAG Enabled: {result.metadata.get('rag_enabled', False)}",
+        f"LLM Enabled: {result.metadata.get('llm_enabled', False)}",
+        f"LLM Model: {result.metadata.get('llm_model', 'None')}",
+        f"LLM Tokens Used: {result.metadata.get('llm_tokens_used', 0)}",
+        f"Embedding Provider: {result.metadata.get('embedding_provider', 'None')}",
+        "",
+    ]
+
+    # Add QC summary
+    if result.qc_report is not None:
+        lines.extend([
+            "-" * 60,
+            "QC SUMMARY",
+            "-" * 60,
+            f"Total Issues: {len(result.qc_report)}",
+        ])
+        if len(result.qc_report) > 0:
+            # Group by severity if available
+            if 'severity' in result.qc_report.columns:
+                severity_counts = result.qc_report['severity'].value_counts().to_dict()
+                for sev, count in severity_counts.items():
+                    lines.append(f"  {sev}: {count}")
+        lines.append("")
+
+    # Add review summary
+    if result.review_result:
+        lines.extend([
+            "-" * 60,
+            "LLM REVIEW SUMMARY",
+            "-" * 60,
+            f"Approval: {result.review_result.get('approval', 'Unknown')}",
+            f"Quality: {result.review_result.get('overall_quality', 'Unknown')}",
+        ])
+        if result.review_result.get('reason'):
+            lines.append(f"Summary: {result.review_result.get('reason')}")
+        lines.append("")
+
+    # Add lineage summary
+    if result.lineage:
+        lines.extend([
+            "-" * 60,
+            "TRANSFORMATION LINEAGE",
+            "-" * 60,
+        ])
+        for entry in result.lineage:
+            var = entry.get('variable', 'Unknown')
+            transform = entry.get('transformation', 'None')
+            changed = entry.get('rows_changed', 0)
+            pct = entry.get('percent_changed', 0)
+            lines.append(f"  {var}: {transform} ({changed} rows, {pct:.1f}% changed)")
+        lines.append("")
+
+    # Add warnings and errors
+    if result.warnings:
+        lines.extend([
+            "-" * 60,
+            "WARNINGS",
+            "-" * 60,
+        ])
+        for w in result.warnings:
+            lines.append(f"  - {w}")
+        lines.append("")
+
+    if result.errors:
+        lines.extend([
+            "-" * 60,
+            "ERRORS",
+            "-" * 60,
+        ])
+        for e in result.errors:
+            lines.append(f"  - {e}")
+        lines.append("")
+
+    lines.extend([
+        "=" * 60,
+        "END OF REPORT",
+        "=" * 60,
+    ])
+
+    return "\n".join(lines)
+
+
 def render_results(result: PipelineResult):
     """Render pipeline results."""
     st.header("📊 Results")
@@ -387,6 +532,19 @@ def render_results(result: PipelineResult):
 
     if result.warnings:
         st.warning("**Warnings:**\n" + "\n".join(f"- {w}" for w in result.warnings))
+
+    # Download All as ZIP button
+    if result.success:
+        zip_data = create_results_zip(result)
+        if zip_data:
+            trial_id = result.metadata.get("trial_id", "output")
+            st.download_button(
+                "📦 Download All Results (ZIP)",
+                zip_data,
+                file_name=f"{trial_id}_harmonization_results.zip",
+                mime="application/zip",
+                type="primary"
+            )
 
     # Tabs for detailed results
     tabs = st.tabs(["📋 Harmonized Data", "⚠️ QC Report", "🔎 LLM Review", "🗺️ Mapping Log", "📝 Lineage"])
