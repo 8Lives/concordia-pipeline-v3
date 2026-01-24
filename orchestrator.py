@@ -233,7 +233,8 @@ class PipelineOrchestrator:
         input_df: Optional[pd.DataFrame] = None,
         trial_id: Optional[str] = None,
         output_dir: Optional[str] = None,
-        skip_qc: bool = False
+        skip_qc: bool = False,
+        data_dict: Optional[List[Dict[str, Any]]] = None
     ) -> PipelineResult:
         """
         Run the complete harmonization pipeline.
@@ -243,6 +244,7 @@ class PipelineOrchestrator:
             input_df: Or provide DataFrame directly
             trial_id: Trial identifier (extracted from filename if not provided)
             output_dir: Output directory (uses default if not provided)
+            data_dict: Optional data dictionary for column mapping hints
             skip_qc: Skip QC stage if True
 
         Returns:
@@ -274,6 +276,11 @@ class PipelineOrchestrator:
             # Create pipeline context
             context = PipelineContext()
             context.set("output_dir", str(output_path))
+
+            # Add data dictionary to context if provided
+            if data_dict:
+                context.set("data_dict", data_dict)
+                logger.info(f"Data dictionary loaded with {len(data_dict)} entries")
 
             # Stage 1: Ingest
             self._update_progress("ingest", "running", "Loading data...", 0.1)

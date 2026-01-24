@@ -203,7 +203,20 @@ def render_file_upload():
             help="Leave blank to extract from filename"
         )
 
-    return uploaded_file, trial_id
+    # Optional data dictionary upload
+    with st.expander("📖 Data Dictionary (Optional)", expanded=False):
+        st.caption("Upload a data dictionary to improve column mapping accuracy")
+        data_dict_file = st.file_uploader(
+            "Upload data dictionary",
+            type=["csv", "xlsx", "xls", "json"],
+            help="Maps source column names to descriptions or standard terms",
+            key="data_dict_uploader"
+        )
+
+        if data_dict_file:
+            st.success(f"✅ Data dictionary loaded: {data_dict_file.name}")
+
+    return uploaded_file, trial_id, data_dict_file if 'data_dict_file' in dir() else None
 
 
 def render_progress():
@@ -376,11 +389,26 @@ def render_results(result: PipelineResult):
         st.json(result.metadata)
 
 
-def run_pipeline(uploaded_file, trial_id: str, config: dict):
+def run_pipeline(uploaded_file, trial_id: str, config: dict, data_dict_file=None):
     """Run the harmonization pipeline."""
     # Reset progress
     st.session_state.progress_log = []
     st.session_state.pipeline_result = None
+
+    # Read data dictionary if provided
+    data_dict = None
+    if data_dict_file is not None:
+        try:
+            if data_dict_file.name.endswith('.csv'):
+                data_dict = pd.read_csv(data_dict_file).to_dict(orient='records')
+            elif data_dict_file.name.endswith(('.xlsx', '.xls')):
+                data_dict = pd.read_excel(data_dict_file).to_dict(orient='records')
+            elif data_dict_file.name.endswith('.json'):
+                data_dict = json.load(data_dict_file)
+            logger.info(f"Loaded data dictionary with {len(data_dict)} entries")
+        except Exception as e:
+            st.warning(f"Could not load data dictionary: {e}")
+            data_dict = None
 
     # Read uploaded file
     try:
@@ -388,6 +416,22 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict):
             df = pd.read_csv(uploaded_file)
         elif uploaded_file.name.endswith(('.xlsx', '.xls')):
             df = pd.read_excel(uploaded_file)
+        elif uploaded_file.name.endswith('.sas7bdat'):
+            # SAS7BDAT format requires pyreadstat or sas7bdat package
+            try:
+                import pyreadstat
+                df, meta = pyreadstat.read_sas7bdat(uploaded_file)
+                logger.info(f"Loaded SAS file with {len(df)} rows using pyreadstat")
+            except ImportError:
+                try:
+                    from sas7bdat import SAS7BDAT
+                    with SAS7BDAT(uploaded_file) as f:
+                        df = f.to_data_frame()
+                    logger.info(f"Loaded SAS file with {len(df)} rows using sas7bdat")
+                except ImportError:
+                    st.error("SAS7BDAT support requires 'pyreadstat' or 'sas7bdat' package. "
+                             "Install with: pip install pyreadstat")
+                    return None
         else:
             st.error(f"Unsupported file format: {uploaded_file.name}")
             return None
@@ -416,7 +460,8 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict):
         result = orchestrator.run(
             input_df=df,
             trial_id=trial_id,
-            skip_qc=config["skip_qc"]
+            skip_qc=config["skip_qc"],
+            data_dict=data_dict
         )
 
     st.session_state.pipeline_result = result
@@ -443,7 +488,7 @@ def main():
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        uploaded_file, trial_id = render_file_upload()
+        uploaded_file, trial_id, data_dict_file = render_file_upload()
 
         if uploaded_file is not None:
             # Show file preview
@@ -451,11 +496,28 @@ def main():
                 try:
                     if uploaded_file.name.endswith('.csv'):
                         preview_df = pd.read_csv(uploaded_file, nrows=5)
-                    else:
+                    elif uploaded_file.name.endswith(('.xlsx', '.xls')):
                         preview_df = pd.read_excel(uploaded_file, nrows=5)
+                    elif uploaded_file.name.endswith('.sas7bdat'):
+                        # For SAS files, read full file then take head (pyreadstat doesn't support nrows)
+                        try:
+                            import pyreadstat
+                            preview_df, _ = pyreadstat.read_sas7bdat(uploaded_file)
+                            preview_df = preview_df.head(5)
+                        except ImportError:
+                            try:
+                                from sas7bdat import SAS7BDAT
+                                with SAS7BDAT(uploaded_file) as f:
+                                    preview_df = f.to_data_frame().head(5)
+                            except ImportError:
+                                st.warning("Install 'pyreadstat' to preview SAS files")
+                                preview_df = None
+                    else:
+                        preview_df = None
 
-                    st.dataframe(preview_df, use_container_width=True)
-                    st.caption(f"Showing first 5 rows • {len(preview_df.columns)} columns")
+                    if preview_df is not None:
+                        st.dataframe(preview_df, use_container_width=True)
+                        st.caption(f"Showing first 5 rows • {len(preview_df.columns)} columns")
 
                     # Reset file position for later reading
                     uploaded_file.seek(0)
@@ -467,7 +529,7 @@ def main():
 
         if uploaded_file is not None:
             if st.button("▶️ Start Harmonization", type="primary", use_container_width=True):
-                result = run_pipeline(uploaded_file, trial_id, config)
+                result = run_pipeline(uploaded_file, trial_id, config, data_dict_file)
         else:
             st.info("Upload a file to begin")
 

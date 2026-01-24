@@ -1,0 +1,23 @@
+# Concordia Pipeline v3 - Dependencies
+
+# Core
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Streamlit UI
+streamlit>=1.28.0
+
+# RAG / Embeddings
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+
+# LLM
+anthropic>=0.18.0
+
+# File format support
+openpyxl>=3.1.0          # Excel files
+pyreadstat>=1.2.0        # SAS7BDAT files (recommended)
+# sas7bdat>=2.2.0        # Alternative SAS reader (optional)
+
+# Optional - for Voyage embeddings
+# voyageai>=0.1.0
