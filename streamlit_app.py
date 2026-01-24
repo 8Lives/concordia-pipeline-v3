@@ -78,101 +78,103 @@ except ImportError as e:
     IMPORT_ERROR = str(e)
 
 
-def parse_data_dictionary_with_llm(df: pd.DataFrame, llm_service) -> Dict:
+def parse_data_dictionary(df: pd.DataFrame) -> Dict:
     """
-    Use LLM to interpret a data dictionary and extract code mappings.
+    Parse a data dictionary DataFrame using deterministic rules (v2 approach).
 
-    This approach is flexible and handles different sponsor formats without hardcoded rules.
+    This uses the proven parsing logic from v2 that correctly handles
+    clinical data dictionaries with continuation rows for code values.
 
     Output format:
     {
         "SEX": {"codes": {"1": "Male", "2": "Female"}},
-        "RACE": {"codes": {"W": "White", "B": "Black"}}
+        "RACE": {"codes": {"11": "White", "12": "Black or African American"}}
     }
     """
-    if not llm_service or not llm_service.is_configured:
-        logger.warning("LLM not available for dictionary parsing, returning empty dict")
+    dictionary = {}
+
+    # Find the header row by looking for known column headers
+    header_row_idx = None
+    for idx, row in df.iterrows():
+        for col_idx, cell in enumerate(row):
+            if pd.notna(cell):
+                cell_str = str(cell).strip().upper()
+                if cell_str in ['VARIABLE NAME', 'VARIABLE', 'VAR NAME']:
+                    header_row_idx = idx
+                    break
+        if header_row_idx is not None:
+            break
+
+    # If we found a header row, reindex the DataFrame
+    if header_row_idx is not None:
+        new_columns = df.iloc[header_row_idx].tolist()
+        df = df.iloc[header_row_idx + 1:].copy()
+        df.columns = [str(c).strip() if pd.notna(c) else f'col_{i}' for i, c in enumerate(new_columns)]
+
+    # Identify key columns by mapping column names (case-insensitive)
+    col_map = {str(c).upper().replace('\n', ' '): c for c in df.columns}
+
+    var_col = None
+    value_col = None
+    format_col = None
+
+    # Find variable name column
+    for candidate in ['VARIABLE NAME', 'VARIABLE', 'VAR', 'NAME', 'FIELD']:
+        if candidate in col_map:
+            var_col = col_map[candidate]
+            break
+
+    # Find value/decode column
+    for candidate in ['VALID VALUES', 'VALUES', 'DECODE', 'VALID VALUE']:
+        if candidate in col_map:
+            value_col = col_map[candidate]
+            break
+
+    # Find format column
+    for candidate in ['FORMAT  (VALUE LIST)', 'FORMAT (VALUE LIST)', 'FORMAT', 'VALUE LIST', 'CODELIST']:
+        if candidate in col_map:
+            format_col = col_map[candidate]
+            break
+
+    if not var_col:
+        logger.warning("Could not find variable name column in dictionary")
         return {}
 
-    # Convert DataFrame to a string representation for LLM
-    # Limit rows to avoid token limits
-    df_sample = df.head(100)
-    df_str = df_sample.to_string()
+    # Parse the dictionary - track current variable for continuation rows
+    current_var = None
 
-    # If too long, truncate
-    if len(df_str) > 15000:
-        df_str = df_str[:15000] + "\n... (truncated)"
+    for _, row in df.iterrows():
+        var_name = row.get(var_col)
 
-    system_prompt = """You are a clinical data dictionary parser. Your task is to extract coded value mappings from data dictionaries used in clinical trials.
+        # If we have a variable name, start tracking a new variable
+        if pd.notna(var_name) and str(var_name).strip():
+            current_var = str(var_name).strip().upper()
+            if current_var not in dictionary:
+                dictionary[current_var] = {
+                    "codes": {},
+                    "format": str(row.get(format_col, '')) if format_col and pd.notna(row.get(format_col)) else ''
+                }
 
-Data dictionaries come in many formats from different sponsors. Common patterns include:
-- Variable names in one column, codes in another (e.g., "1 = Male", "2 = Female")
-- Separate columns for variable, code, and decode/label
-- Continuation rows where variable name is blank but more codes follow
-- Format columns like "$SEX" or "$RACE" indicating coded variables
+        # Parse code = value patterns from the value column
+        if current_var and value_col:
+            value_str = row.get(value_col)
+            if pd.notna(value_str):
+                value_str = str(value_str).strip()
+                if '=' in value_str:
+                    parts = value_str.split('=', 1)
+                    code = parts[0].strip()
+                    label = parts[1].strip()
+                    dictionary[current_var]["codes"][code] = label
 
-Focus on extracting mappings for demographic variables: SEX, RACE, ETHNIC/ETHGRP, COUNTRY, ARM/ARMCD, and any other coded variables you can identify.
+    # Remove variables with no codes
+    dictionary = {k: v for k, v in dictionary.items() if v.get("codes")}
 
-Return ONLY valid JSON with no markdown formatting."""
+    logger.info(f"Deterministic parser found {len(dictionary)} variables with codes")
+    for var, data in dictionary.items():
+        codes = data.get("codes", {})
+        logger.info(f"  {var}: {len(codes)} codes - keys: {list(codes.keys())}")
 
-    user_prompt = f"""Parse this clinical data dictionary and extract all code-to-decode mappings.
-
-Data Dictionary Content:
-{df_str}
-
-Return a JSON object with this structure:
-{{
-    "VARIABLE_NAME": {{
-        "codes": {{
-            "CODE1": "Decoded Value 1",
-            "CODE2": "Decoded Value 2"
-        }}
-    }}
-}}
-
-Important:
-- Use UPPERCASE for variable names and codes
-- Include ALL coded variables you can find (SEX, RACE, ETHNIC, ETHGRP, COUNTRY, ARM, etc.)
-- If a variable has codes like "1 = Male", extract as {{"1": "Male"}}
-- Include both old and new code systems if present (e.g., RACE might have codes 1-3 and 11-15)"""
-
-    try:
-        response = llm_service.call(
-            prompt=user_prompt,
-            system=system_prompt,
-            max_tokens=4096,
-            temperature=0.0,
-            json_mode=True
-        )
-
-        if response.success and response.parsed_data:
-            result = response.parsed_data
-            # Ensure proper structure and convert all keys to strings
-            for var in list(result.keys()):
-                if not isinstance(result[var], dict):
-                    del result[var]
-                elif "codes" not in result[var]:
-                    result[var] = {"codes": result[var]} if isinstance(result[var], dict) else {"codes": {}}
-
-            # CRITICAL: Ensure all code keys are strings (JSON may parse "1" as integer)
-            for var in result:
-                if "codes" in result[var]:
-                    # Convert all keys to strings
-                    codes = result[var]["codes"]
-                    result[var]["codes"] = {str(k): v for k, v in codes.items()}
-
-            logger.info(f"LLM parsed dictionary with {len(result)} variables")
-            for var, data in result.items():
-                codes = data.get("codes", {})
-                logger.info(f"  {var}: {len(codes)} codes - keys: {list(codes.keys())}")
-            return result
-        else:
-            logger.error(f"LLM dictionary parsing failed: {response.error}")
-            return {}
-
-    except Exception as e:
-        logger.exception(f"Error parsing dictionary with LLM: {e}")
-        return {}
+    return dictionary
 
 
 def init_session_state():
@@ -384,7 +386,7 @@ def create_results_zip(result: PipelineResult) -> bytes:
 
 def create_transformation_report_docx(result: PipelineResult) -> bytes:
     """
-    Create a DOCX transformation report matching v2 format.
+    Create a DOCX transformation report matching v2 format exactly.
 
     Returns bytes for the DOCX file.
     """
@@ -396,98 +398,115 @@ def create_transformation_report_docx(result: PipelineResult) -> bytes:
 
     doc = Document()
 
-    # Title
-    title = doc.add_heading('Concordia Pipeline v3 - Transformation Report', 0)
+    # Title (v2 format)
+    title = doc.add_heading('Harmonization Transformation Report', 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # Summary section
-    doc.add_heading('Summary', level=1)
-    summary_table = doc.add_table(rows=6, cols=2)
-    summary_table.style = 'Table Grid'
+    # Get metadata
+    ingest_meta = result.metadata.get('stages', {}).get('ingest', {})
+    harmonize_meta = result.metadata.get('stages', {}).get('harmonize', {})
 
-    summary_data = [
-        ('Trial ID', result.metadata.get('trial_id', 'Unknown')),
-        ('Timestamp', result.metadata.get('timestamp', 'Unknown')),
-        ('Status', 'SUCCESS' if result.success else 'FAILED'),
-        ('Rows Processed', str(result.metadata.get('rows_processed', 0))),
-        ('Execution Time', f"{result.execution_time_ms / 1000:.2f} seconds"),
-        ('LLM Model', result.metadata.get('llm_model', 'None')),
-    ]
+    trial_id = result.metadata.get('trial_id', 'Unknown')
+    source_filename = ingest_meta.get('source_filename', result.metadata.get('source_filename', 'Unknown'))
+    rows_in = ingest_meta.get('rows', result.metadata.get('rows_processed', 0))
+    rows_out = harmonize_meta.get('rows_out', rows_in)
+    rows_dropped = rows_in - rows_out if rows_in and rows_out else 0
 
-    for i, (label, value) in enumerate(summary_data):
-        summary_table.rows[i].cells[0].text = label
-        summary_table.rows[i].cells[1].text = str(value)
+    # Header info (v2 format - not a table, just paragraphs)
+    doc.add_paragraph(f"Trial: {trial_id}")
+    doc.add_paragraph(f"Input: {source_filename}")
+    doc.add_paragraph(f"Rows in input: {rows_in} | Rows in output: {rows_out} | Rows dropped: {rows_dropped}")
+    doc.add_paragraph(f"Pipeline version: v3 (RAG-Enhanced Agentic Architecture)")
+    doc.add_paragraph(f"Run ID: {result.metadata.get('timestamp', 'Unknown')}")
+
+    # Execution Summary (v2 format)
+    doc.add_heading('Execution Summary', level=1)
+    stages = result.metadata.get('stages', {})
+    for stage_name, stage_info in stages.items():
+        if isinstance(stage_info, dict):
+            status = "✓" if stage_info.get('success', True) else "✗"
+            time_ms = stage_info.get('execution_time_ms', 0)
+            doc.add_paragraph(f"{status} {stage_name}: {time_ms}ms")
+
+    # Dictionary info
+    dict_filename = ingest_meta.get('dictionary_filename') or result.metadata.get('dictionary_filename')
+    if dict_filename:
+        doc.add_paragraph(f"Dictionary used: {dict_filename}")
+    else:
+        doc.add_paragraph("Dictionary used: None")
 
     doc.add_paragraph()
 
-    # Transformation Details section (row-by-row like v2)
-    doc.add_heading('Transformation Details', level=1)
+    # Output Schema (v2 format)
+    doc.add_heading('1. Output Schema', level=1)
+    if result.harmonized_data is not None:
+        doc.add_paragraph(', '.join(result.harmonized_data.columns.tolist()))
+    else:
+        doc.add_paragraph("TRIAL, SUBJID, SEX, RACE, AGE, AGEU, AGEGP, ETHNIC, COUNTRY, SITEID, STUDYID, USUBJID, ARMCD, ARM, BRTHDTC, RFSTDTC, RFENDTC, DOMAIN")
+
+    # Variable Transformation Table (v2 format)
+    doc.add_heading('2. Variable-Level Transformations', level=1)
 
     if result.lineage:
-        # Create table with 7 columns like v2
         trans_table = doc.add_table(rows=1, cols=7)
         trans_table.style = 'Table Grid'
 
-        # Headers
+        # Headers (v2 format)
         headers = ['Variable', 'Source', 'Operation', 'Details', 'Changed', '%', 'Missing']
         hdr_cells = trans_table.rows[0].cells
         for i, header in enumerate(headers):
             hdr_cells[i].text = header
-            # Bold headers
-            for paragraph in hdr_cells[i].paragraphs:
-                for run in paragraph.runs:
-                    run.bold = True
 
         # Data rows
         for entry in result.lineage:
             row_cells = trans_table.add_row().cells
-            row_cells[0].text = entry.get('variable', 'Unknown')
-            row_cells[1].text = entry.get('source_column', '-') or '-'
-            row_cells[2].text = entry.get('mapping_operation', '-') or '-'
-            row_cells[3].text = entry.get('transformation', 'None') or 'None'
+            row_cells[0].text = str(entry.get('variable', ''))
+
+            # Source column - show (derived) if None
+            source_col = entry.get('source_column', '') or ''
+            row_cells[1].text = str(source_col) if source_col else '(derived)'
+
+            row_cells[2].text = str(entry.get('mapping_operation', 'Copy'))
+
+            # Use transform_operation (v2 key name), truncated to 50 chars
+            transform_op = entry.get('transform_operation', '') or entry.get('transformation', 'None')
+            row_cells[3].text = str(transform_op)[:50]
+
             row_cells[4].text = str(entry.get('rows_changed', 0))
             row_cells[5].text = f"{entry.get('percent_changed', 0):.1f}%"
+            row_cells[6].text = str(entry.get('missing_count', 0))
 
-            # Calculate missing (if available in details)
-            details = entry.get('transformation_details', {})
-            missing = details.get('missing_count', '-')
-            row_cells[6].text = str(missing) if missing != '-' else '-'
+    # QC Report Section (v2 format)
+    doc.add_heading('3. QC Report', level=1)
 
-    doc.add_paragraph()
-
-    # QC Report section
     if result.qc_report is not None and len(result.qc_report) > 0:
-        doc.add_heading('QC Report', level=1)
-
         qc_table = doc.add_table(rows=1, cols=5)
         qc_table.style = 'Table Grid'
 
-        # Headers
-        qc_headers = ['Variable', 'Check', 'Severity', 'Count', 'Message']
+        qc_headers = ['TRIAL', 'Issue Type', 'Variable', 'Rows Affected', 'Notes']
         hdr_cells = qc_table.rows[0].cells
         for i, header in enumerate(qc_headers):
             hdr_cells[i].text = header
-            for paragraph in hdr_cells[i].paragraphs:
-                for run in paragraph.runs:
-                    run.bold = True
 
-        # Data rows (limit to first 50 issues)
-        for idx, row in result.qc_report.head(50).iterrows():
+        for _, issue in result.qc_report.iterrows():
             row_cells = qc_table.add_row().cells
-            row_cells[0].text = str(row.get('variable', '-'))
-            row_cells[1].text = str(row.get('check', '-'))
-            row_cells[2].text = str(row.get('severity', '-'))
-            row_cells[3].text = str(row.get('count', '-'))
-            row_cells[4].text = str(row.get('message', '-'))
+            row_cells[0].text = str(trial_id)
+            row_cells[1].text = str(issue.get('issue_type', ''))
+            row_cells[2].text = str(issue.get('variable', ''))
+            row_cells[3].text = str(issue.get('n_rows_affected', 0))
+            row_cells[4].text = str(issue.get('notes', ''))[:100]
+    else:
+        doc.add_paragraph("No QC issues found.")
 
-        if len(result.qc_report) > 50:
-            doc.add_paragraph(f"Note: Showing first 50 of {len(result.qc_report)} QC issues.")
+    # Files Produced (v2 format)
+    doc.add_heading('4. Files Produced', level=1)
+    doc.add_paragraph(f"Harmonized output: {trial_id}_DM_harmonized_*.csv")
+    doc.add_paragraph(f"QC report: {trial_id}_QC_report_*.csv")
+    doc.add_paragraph(f"Transformation report: This document")
 
-        doc.add_paragraph()
-
-    # LLM Review section
+    # LLM Review section (v3 addition)
     if result.review_result:
-        doc.add_heading('LLM Review', level=1)
+        doc.add_heading('5. LLM Review', level=1)
 
         review = result.review_result
         doc.add_paragraph(f"Approval: {review.get('approval', 'Unknown')}")
@@ -495,18 +514,6 @@ def create_transformation_report_docx(result: PipelineResult) -> bytes:
 
         if review.get('reason'):
             doc.add_paragraph(f"Summary: {review.get('reason')}")
-
-        if review.get('critical_issues'):
-            doc.add_heading('Critical Issues', level=2)
-            for issue in review['critical_issues']:
-                doc.add_paragraph(f"• {issue}", style='List Bullet')
-
-        if review.get('recommendations'):
-            doc.add_heading('Recommendations', level=2)
-            for rec in review['recommendations']:
-                doc.add_paragraph(f"• {rec}", style='List Bullet')
-
-        doc.add_paragraph()
 
     # Warnings and Errors
     if result.warnings:
@@ -593,8 +600,8 @@ def render_results(result: PipelineResult):
                 type="primary"
             )
 
-    # Tabs for detailed results
-    tabs = st.tabs(["📋 Harmonized Data", "⚠️ QC Report", "🔎 LLM Review", "🗺️ Mapping Log", "📝 Lineage"])
+    # Tabs for detailed results (matching v2 structure)
+    tabs = st.tabs(["📋 Harmonized Data", "⚠️ QC Report", "🔎 LLM Review", "🔄 Transformations", "📦 Downloads"])
 
     with tabs[0]:
         if result.harmonized_data is not None:
@@ -629,16 +636,28 @@ def render_results(result: PipelineResult):
         if result.review_result:
             review = result.review_result
 
-            # Show approval status
-            approval = review.get("approval", "unknown")
-            if approval == "approved":
-                st.success(f"✅ **LLM Review: APPROVED**")
-            elif approval == "approved_with_warnings":
-                st.warning(f"⚠️ **LLM Review: APPROVED WITH WARNINGS**")
-            elif approval == "rejected":
-                st.error(f"❌ **LLM Review: REJECTED**")
+            # Show STOPLIGHT status (new v3 format)
+            stoplight = review.get("stoplight") or review.get("approval", "unknown")
+
+            if stoplight.upper() == "GREEN":
+                st.success(f"🟢 **STOPLIGHT: GREEN**")
+                st.markdown("All 5 core variables present and properly formatted.")
+            elif stoplight.upper() == "YELLOW":
+                st.warning(f"🟡 **STOPLIGHT: YELLOW**")
+                st.markdown("Missing 1-2 core variables or formatting issues detected.")
+            elif stoplight.upper() == "RED":
+                st.error(f"🔴 **STOPLIGHT: RED**")
+                st.markdown("Missing 3+ core variables.")
             else:
-                st.info(f"🔍 **LLM Review: {approval.upper()}**")
+                st.info(f"🔍 **LLM Review: {stoplight.upper()}**")
+
+            # Show core variables status
+            if "core_variables_present" in review:
+                st.markdown(f"**Core Variables Present:** {', '.join(review['core_variables_present'])}")
+            if "core_variables_missing" in review:
+                missing = review['core_variables_missing']
+                if missing:
+                    st.markdown(f"**Core Variables Missing:** {', '.join(missing)}")
 
             # Show quality assessment
             if "overall_quality" in review:
@@ -648,11 +667,20 @@ def render_results(result: PipelineResult):
             if "reason" in review:
                 st.markdown(f"**Summary:** {review['reason']}")
 
+            # Show formatting issues
+            if review.get("formatting_issues"):
+                st.subheader("Formatting Issues")
+                for issue in review["formatting_issues"]:
+                    st.markdown(f"- {issue}")
+
             # Show critical issues
             if review.get("critical_issues"):
                 st.subheader("Critical Issues")
                 for issue in review["critical_issues"]:
-                    st.markdown(f"- {issue}")
+                    if isinstance(issue, dict):
+                        st.markdown(f"- {issue.get('issue', issue)}")
+                    else:
+                        st.markdown(f"- {issue}")
 
             # Show recommendations
             if review.get("recommendations"):
@@ -667,18 +695,77 @@ def render_results(result: PipelineResult):
             st.info("No LLM review performed (requires Anthropic API key)")
 
     with tabs[3]:
-        if result.mapping_log:
-            # Convert to DataFrame for display
-            mapping_df = pd.DataFrame(result.mapping_log)
-            st.dataframe(mapping_df, use_container_width=True)
+        st.subheader("Variable Transformations")
+        if result.lineage:
+            # Convert lineage to DataFrame with v2 column names
+            lineage_data = []
+            for entry in result.lineage:
+                lineage_data.append({
+                    "variable": entry.get("variable", ""),
+                    "source_column": entry.get("source_column", "") or "(derived)",
+                    "mapping_operation": entry.get("mapping_operation", ""),
+                    "transform_operation": entry.get("transform_operation", "") or entry.get("transformation", ""),
+                    "transform_details": str(entry.get("transform_details", {})),
+                    "rows_changed": entry.get("rows_changed", 0),
+                    "percent_changed": f"{entry.get('percent_changed', 0):.1f}%",
+                    "missing_count": entry.get("missing_count", 0),
+                    "non_null_count": entry.get("non_null_count", 0)
+                })
+
+            lineage_df = pd.DataFrame(lineage_data)
+            st.dataframe(lineage_df, use_container_width=True)
         else:
-            st.info("No mapping log available")
+            st.info("No transformation data available")
 
     with tabs[4]:
-        if result.lineage:
-            st.json(result.lineage)
-        else:
-            st.info("No lineage data available")
+        st.subheader("Downloads")
+
+        # Individual downloads
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if result.harmonized_data is not None:
+                trial_id = result.metadata.get("trial_id", "output")
+                csv = result.harmonized_data.to_csv(index=False)
+                st.download_button(
+                    "📋 Harmonized Data (CSV)",
+                    csv,
+                    file_name=f"{trial_id}_harmonized.csv",
+                    mime="text/csv"
+                )
+
+            if result.qc_report is not None and len(result.qc_report) > 0:
+                qc_csv = result.qc_report.to_csv(index=False)
+                st.download_button(
+                    "⚠️ QC Report (CSV)",
+                    qc_csv,
+                    file_name=f"{trial_id}_qc_report.csv",
+                    mime="text/csv"
+                )
+
+        with col2:
+            # DOCX Transformation Report
+            try:
+                docx_bytes = create_transformation_report_docx(result)
+                st.download_button(
+                    "📄 Transformation Report (DOCX)",
+                    docx_bytes,
+                    file_name=f"{trial_id}_transformation_report.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+            except Exception as e:
+                st.warning(f"Could not generate DOCX report: {e}")
+
+            # All as ZIP
+            if result.success:
+                zip_data = create_results_zip(result)
+                if zip_data:
+                    st.download_button(
+                        "📦 All Results (ZIP)",
+                        zip_data,
+                        file_name=f"{trial_id}_harmonization_results.zip",
+                        mime="application/zip"
+                    )
 
     # Metadata
     with st.expander("📋 Metadata"):
@@ -788,27 +875,22 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict, data_dict_file=None
         embedding_provider=config["embedding_provider"]
     )
 
-    # Parse data dictionary using LLM if we have a DataFrame to parse
+    # Parse data dictionary using deterministic parser (v2 approach)
     if dict_df is not None and data_dict is None:
-        progress_bar.progress(0.05, text="🔧 INIT: Parsing data dictionary with LLM...")
+        progress_bar.progress(0.05, text="🔧 INIT: Parsing data dictionary...")
 
-        # Initialize LLM for dictionary parsing
-        if config["use_llm"]:
-            try:
-                from llm.service import LLMService
-                llm_for_dict = LLMService()
-                if llm_for_dict.is_configured:
-                    data_dict = parse_data_dictionary_with_llm(dict_df, llm_for_dict)
-                    if data_dict:
-                        st.success(f"✅ Dictionary parsed: {len(data_dict)} variables extracted")
-                        logger.info(f"LLM parsed dictionary: {list(data_dict.keys())}")
-                    else:
-                        st.warning("Could not extract mappings from dictionary")
-                else:
-                    st.warning("LLM not configured - dictionary will not be used")
-            except Exception as e:
-                logger.exception("Failed to parse dictionary with LLM")
-                st.warning(f"Dictionary parsing failed: {e}")
+        try:
+            data_dict = parse_data_dictionary(dict_df)
+            if data_dict:
+                st.success(f"✅ Dictionary parsed: {len(data_dict)} variables extracted")
+                logger.info(f"Parsed dictionary variables: {list(data_dict.keys())}")
+                for var, info in data_dict.items():
+                    logger.info(f"  {var}: {list(info.get('codes', {}).keys())}")
+            else:
+                st.warning("Could not extract code mappings from dictionary")
+        except Exception as e:
+            logger.exception("Failed to parse dictionary")
+            st.warning(f"Dictionary parsing failed: {e}")
 
     # Run pipeline (no spinner - we have the progress bar)
     try:

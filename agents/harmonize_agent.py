@@ -264,12 +264,14 @@ class HarmonizeAgent(AgentBase):
                     df, var, var_mapping, dictionary, trial_id
                 )
 
-                # Track changes
+                # Track changes and missing counts (v2 structure)
                 lineage_entry["rows_changed"] = self._count_changes(original_values, df[var])
                 lineage_entry["percent_changed"] = (
                     lineage_entry["rows_changed"] / len(df) * 100
                     if len(df) > 0 else 0
                 )
+                lineage_entry["missing_count"] = int(df[var].isna().sum())
+                lineage_entry["non_null_count"] = int(df[var].notna().sum())
                 lineage_log.append(lineage_entry)
 
             # Check for duplicates
@@ -322,8 +324,8 @@ class HarmonizeAgent(AgentBase):
             "variable": variable,
             "source_column": mapping.get("source_column"),
             "mapping_operation": mapping.get("operation", "Unknown"),
-            "transformation": "None",
-            "transformation_details": {},
+            "transform_operation": "None",  # v2 key name
+            "transform_details": {},  # v2 key name
             "spec_reference": None,
         }
 
@@ -333,7 +335,7 @@ class HarmonizeAgent(AgentBase):
                 spec = self.retriever.get_variable_rules(variable)
                 if spec:
                     lineage["spec_reference"] = spec.spec_reference
-                    lineage["transformation"] = spec.transformation or "None"
+                    lineage["transform_operation"] = spec.transformation or "None"
             except Exception:
                 pass
 
@@ -381,13 +383,13 @@ class HarmonizeAgent(AgentBase):
         """Harmonize TRIAL - set constant or normalize."""
         if trial_id:
             result = pd.Series([trial_id] * len(df), index=df.index)
-            lineage["transformation"] = "Constant"
-            lineage["transformation_details"] = {"value": trial_id}
+            lineage["transform_operation"] = "Constant"
+            lineage["transform_details"] = {"value": trial_id}
         else:
             result = df["TRIAL"].apply(
                 lambda x: str(x).strip().upper() if pd.notna(x) else None
             )
-            lineage["transformation"] = "Normalize (uppercase, trim)"
+            lineage["transform_operation"] = "Normalize (uppercase, trim)"
 
         return result, lineage
 
@@ -402,7 +404,7 @@ class HarmonizeAgent(AgentBase):
             return str(x).strip()
 
         result = df["SUBJID"].apply(clean_subjid)
-        lineage["transformation"] = "Trim, convert floats to strings"
+        lineage["transform_operation"] = "Trim, convert floats to strings"
         return result, lineage
 
     def _harmonize_sex(
@@ -488,8 +490,8 @@ class HarmonizeAgent(AgentBase):
             return to_mixed_case(val_str)
 
         result = df["SEX"].apply(harmonize_sex)
-        lineage["transformation"] = "Decode codes, normalize to mixed case"
-        lineage["transformation_details"] = {
+        lineage["transform_operation"] = "Decode codes, normalize to mixed case"
+        lineage["transform_details"] = {
             "valid_values": valid_values,
             "dictionary_used": bool(dict_codes),
             "llm_used": llm_used,
@@ -603,8 +605,8 @@ class HarmonizeAgent(AgentBase):
             return val_mixed
 
         result = df["RACE"].apply(harmonize_race)
-        lineage["transformation"] = "Decode codes, normalize, mixed case"
-        lineage["transformation_details"] = {
+        lineage["transform_operation"] = "Decode codes, normalize, mixed case"
+        lineage["transform_details"] = {
             "valid_values": valid_values,
             "dictionary_used": bool(dict_codes),
             "llm_used": llm_used,
@@ -639,7 +641,7 @@ class HarmonizeAgent(AgentBase):
             return None
 
         result = df.apply(clean_age, axis=1)
-        lineage["transformation"] = "Convert to numeric, derive from dates if missing"
+        lineage["transform_operation"] = "Convert to numeric, derive from dates if missing"
         return result, lineage
 
     def _harmonize_ageu(self, df: pd.DataFrame, lineage: Dict) -> Tuple[pd.Series, Dict]:
@@ -661,7 +663,7 @@ class HarmonizeAgent(AgentBase):
             return "Years"
 
         result = df.apply(clean_ageu, axis=1)
-        lineage["transformation"] = "Standardize to 'Years'"
+        lineage["transform_operation"] = "Standardize to 'Years'"
         return result, lineage
 
     def _harmonize_agegp(self, df: pd.DataFrame, lineage: Dict) -> Tuple[pd.Series, Dict]:
@@ -680,7 +682,7 @@ class HarmonizeAgent(AgentBase):
             return None
 
         result = df.apply(clean_agegp, axis=1)
-        lineage["transformation"] = "Preserve if AGE missing, blank otherwise"
+        lineage["transform_operation"] = "Preserve if AGE missing, blank otherwise"
         return result, lineage
 
     def _harmonize_ethnic(
@@ -721,8 +723,8 @@ class HarmonizeAgent(AgentBase):
             return to_mixed_case(val_str)
 
         result = df["ETHNIC"].apply(harmonize_ethnic)
-        lineage["transformation"] = "Decode codes, normalize to mixed case"
-        lineage["transformation_details"] = {
+        lineage["transform_operation"] = "Decode codes, normalize to mixed case"
+        lineage["transform_details"] = {
             "dictionary_used": bool(dict_codes),
             "dictionary_source": dict_source,
             "dict_codes": list(dict_codes.keys())[:10]
@@ -757,7 +759,7 @@ class HarmonizeAgent(AgentBase):
             return to_mixed_case(val)
 
         result = df["COUNTRY"].apply(harmonize_country)
-        lineage["transformation"] = "Expand ISO codes, normalize to mixed case"
+        lineage["transform_operation"] = "Expand ISO codes, normalize to mixed case"
         return result, lineage
 
     def _harmonize_siteid(self, df: pd.DataFrame, lineage: Dict) -> Tuple[pd.Series, Dict]:
@@ -778,7 +780,7 @@ class HarmonizeAgent(AgentBase):
             return val
 
         result = df["SITEID"].apply(clean_siteid)
-        lineage["transformation"] = "Preserve as string (maintain leading zeros)"
+        lineage["transform_operation"] = "Preserve as string (maintain leading zeros)"
         return result, lineage
 
     def _harmonize_studyid(self, df: pd.DataFrame, lineage: Dict) -> Tuple[pd.Series, Dict]:
@@ -786,7 +788,7 @@ class HarmonizeAgent(AgentBase):
         result = df["STUDYID"].apply(
             lambda x: str(x).strip() if pd.notna(x) else None
         )
-        lineage["transformation"] = "Trim whitespace"
+        lineage["transform_operation"] = "Trim whitespace"
         return result, lineage
 
     def _harmonize_usubjid(self, df: pd.DataFrame, lineage: Dict) -> Tuple[pd.Series, Dict]:
@@ -811,7 +813,7 @@ class HarmonizeAgent(AgentBase):
             return str(subjid)
 
         result = df.apply(derive_usubjid, axis=1)
-        lineage["transformation"] = "Derive as STUDYID||'-'||SUBJID if not present"
+        lineage["transform_operation"] = "Derive as STUDYID||'-'||SUBJID if not present"
         return result, lineage
 
     def _harmonize_arm(
@@ -838,7 +840,7 @@ class HarmonizeAgent(AgentBase):
             return to_mixed_case(val)
 
         result = df[variable].apply(harmonize_arm)
-        lineage["transformation"] = "Decode codes, normalize to mixed case"
+        lineage["transform_operation"] = "Decode codes, normalize to mixed case"
         return result, lineage
 
     def _harmonize_date(
@@ -873,13 +875,13 @@ class HarmonizeAgent(AgentBase):
             return val
 
         result = df[variable].apply(clean_date)
-        lineage["transformation"] = "Convert SAS dates to ISO 8601"
+        lineage["transform_operation"] = "Convert SAS dates to ISO 8601"
         return result, lineage
 
     def _harmonize_domain(self, df: pd.DataFrame, lineage: Dict) -> Tuple[pd.Series, Dict]:
         """Harmonize DOMAIN - set constant 'DM'."""
         result = pd.Series(["DM"] * len(df), index=df.index)
-        lineage["transformation"] = "Constant 'DM'"
+        lineage["transform_operation"] = "Constant 'DM'"
         return result, lineage
 
     def _harmonize_default(
@@ -892,7 +894,7 @@ class HarmonizeAgent(AgentBase):
         result = df[variable].apply(
             lambda x: normalize_whitespace(str(x)) if pd.notna(x) else None
         )
-        lineage["transformation"] = "Normalize whitespace"
+        lineage["transform_operation"] = "Normalize whitespace"
         return result, lineage
 
     def _count_changes(self, original: pd.Series, harmonized: pd.Series) -> int:

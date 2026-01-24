@@ -68,19 +68,28 @@ Respond in JSON:
         """System prompt for data review tasks."""
         return """You are a senior clinical data manager reviewing harmonized trial data.
 
-Your review should assess:
-1. **Completeness**: Required fields populated, no unexpected nulls
-2. **Validity**: Values conform to CDISC controlled terminology
-3. **Consistency**: Related fields are logically consistent
-4. **Format**: Dates in ISO 8601, proper text formatting
-5. **Compliance**: Adherence to DM domain specifications
+IMPORTANT: Ignore all SDTM requirements for this review. Use the following stoplight grading rules:
 
-Be thorough but practical. Focus on issues that would:
-- Cause regulatory submission problems
-- Indicate data quality issues in source
-- Affect downstream analyses
+## STOPLIGHT GRADING RULES:
 
-Provide actionable, specific recommendations."""
+**GREEN** - All of the following 5 core variables are present and populated:
+1. SEX
+2. RACE
+3. ETHNIC
+4. AGE or AGEGP (at least one must be present)
+5. COUNTRY
+
+**YELLOW** - Missing no more than 2 of the 5 core variables, OR flagged formatting issues with any of the core variables
+
+**RED** - Missing 3 or more of the 5 core variables
+
+## Your Review Should:
+1. Count which core variables are present/missing
+2. Check for formatting issues in core variables
+3. Assign the appropriate stoplight color based on the rules above
+4. Provide actionable recommendations for any issues found
+
+Focus ONLY on the 5 core variables (SEX, RACE, ETHNIC, AGE/AGEGP, COUNTRY). Other variables should not affect the stoplight grade."""
 
     @staticmethod
     def review_prompt(
@@ -90,17 +99,14 @@ Provide actionable, specific recommendations."""
         spec_summary: str
     ) -> str:
         """Generate prompt for data review."""
-        return f"""Review this harmonized Demographics (DM) dataset.
-
-## Specification Summary:
-{spec_summary}
+        return f"""Review this harmonized Demographics (DM) dataset using the STOPLIGHT GRADING RULES.
 
 ## Data Sample (5 rows):
 ```json
 {json.dumps(data_sample[:5], indent=2, default=str)}
 ```
 
-## Column Statistics:
+## Column Statistics (check for presence and completeness of core variables):
 ```json
 {json.dumps(column_stats, indent=2, default=str)}
 ```
@@ -111,18 +117,25 @@ Provide actionable, specific recommendations."""
 ```
 {f"... and {len(qc_issues) - 10} more issues" if len(qc_issues) > 10 else ""}
 
+## Your Task:
+1. Check which of the 5 CORE variables are present: SEX, RACE, ETHNIC, AGE/AGEGP, COUNTRY
+2. Identify any formatting issues with core variables
+3. Apply the STOPLIGHT rules to determine the grade (GREEN/YELLOW/RED)
+
 Provide your review in JSON:
 {{
+    "stoplight": "GREEN|YELLOW|RED",
+    "core_variables_present": ["list variables that are present and properly populated"],
+    "core_variables_missing": ["list variables that are missing or empty"],
+    "core_variables_count": <number of core variables present out of 5>,
+    "formatting_issues": ["list any formatting issues with core variables"],
     "overall_quality": "good|acceptable|needs_attention|poor",
     "critical_issues": [
         {{"issue": "description", "severity": "critical|high|medium", "recommendation": "fix"}}
     ],
-    "data_observations": [
-        {{"observation": "what you noticed", "implication": "why it matters"}}
-    ],
-    "approval_status": "approved|approved_with_caveats|needs_revision|rejected",
-    "revision_required": ["list of required changes before approval"],
-    "summary": "2-3 sentence overall assessment"
+    "approval": "GREEN|YELLOW|RED",
+    "reason": "Brief explanation of why this stoplight grade was assigned",
+    "recommendations": ["actionable recommendations for improvement"]
 }}"""
 
     @staticmethod
