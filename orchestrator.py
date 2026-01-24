@@ -315,7 +315,8 @@ class PipelineOrchestrator:
                 result.errors.append(f"Harmonize failed: {harmonize_result.error}")
                 return result
 
-            result.lineage = context.get("lineage", [])
+            # Get lineage from harmonize agent (stored as harmonize_lineage_log)
+            result.lineage = context.get("harmonize_lineage_log", [])
 
             # Stage 4: QC (optional)
             if not skip_qc:
@@ -345,7 +346,8 @@ class PipelineOrchestrator:
             # Gather results
             self._update_progress("finalize", "running", "Finalizing results...", 0.9)
 
-            result.harmonized_data = context.get("df")
+            # Get harmonized data (stored as harmonized_df by harmonize agent)
+            result.harmonized_data = context.get("harmonized_df") or context.get("df")
             result.success = True
             result.metadata = {
                 "trial_id": context.get("trial_id"),

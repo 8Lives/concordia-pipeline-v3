@@ -64,14 +64,16 @@ class ReviewAgent(AgentBase):
 
     def validate_input(self, context: PipelineContext) -> Optional[str]:
         """Validate required inputs exist."""
-        if context.get("df") is None:
-            return "No DataFrame found in context (df)"
+        # Check for harmonized_df first, fall back to df
+        if context.get("harmonized_df") is None and context.get("df") is None:
+            return "No DataFrame found in context (harmonized_df or df)"
         return None
 
     def execute(self, context: PipelineContext) -> AgentResult:
         """Execute the review process."""
         try:
-            df = context.get("df")
+            # Use harmonized_df (from harmonize agent) if available, otherwise fall back to df
+            df = context.get("harmonized_df") or context.get("df")
             qc_report = context.get("qc_report")
             mapping_log = context.get("mapping_log", [])
             lineage_log = context.get("harmonize_lineage_log", [])
@@ -96,7 +98,8 @@ class ReviewAgent(AgentBase):
             response = self.llm_service.review_harmonized_data(
                 data_sample=data_sample,
                 variable_rules=variable_rules,
-                qc_issues=qc_issues
+                qc_issues=qc_issues,
+                column_stats=column_stats
             )
 
             if not response.success:
@@ -107,27 +110,29 @@ class ReviewAgent(AgentBase):
             self._update_status(self._status, "Processing review results...", 0.8)
             review_result = response.parsed_data or {}
 
-            # Determine approval status
+            # Extract stoplight (new v3 format)
+            stoplight = review_result.get("stoplight") or review_result.get("approval", "UNKNOWN")
+            stoplight = stoplight.upper() if stoplight else "UNKNOWN"
+
+            # Determine approval status based on stoplight
             overall_quality = review_result.get("overall_quality", "unknown")
-            approval_status = review_result.get("approval_recommendation", "needs_revision")
 
-            # Auto-approval logic
-            approved = False
-            if self.auto_approve_threshold:
-                quality_levels = ["good", "acceptable", "needs_attention", "poor"]
-                threshold_idx = quality_levels.index(self.auto_approve_threshold) if self.auto_approve_threshold in quality_levels else -1
-                current_idx = quality_levels.index(overall_quality) if overall_quality in quality_levels else len(quality_levels)
-                approved = current_idx <= threshold_idx
+            # Auto-approval logic based on stoplight
+            approved = stoplight == "GREEN"
 
-            # Store review results
+            # Store review results with stoplight fields
             review_data = {
+                "stoplight": stoplight,
+                "approval": stoplight,  # Alias for compatibility
                 "overall_quality": overall_quality,
-                "approval_status": approval_status,
                 "approved": approved,
+                "core_variables_present": review_result.get("core_variables_present", []),
+                "core_variables_missing": review_result.get("core_variables_missing", []),
+                "core_variables_count": review_result.get("core_variables_count", 0),
+                "formatting_issues": review_result.get("formatting_issues", []),
                 "critical_issues": review_result.get("critical_issues", []),
-                "warnings": review_result.get("warnings", []),
-                "observations": review_result.get("observations", []),
-                "summary": review_result.get("summary", "Review completed"),
+                "recommendations": review_result.get("recommendations", []),
+                "reason": review_result.get("reason", "Review completed"),
                 "llm_tokens_used": response.usage,
                 "review_type": "llm"
             }
@@ -161,38 +166,60 @@ class ReviewAgent(AgentBase):
         df: pd.DataFrame,
         qc_report: Optional[pd.DataFrame]
     ) -> AgentResult:
-        """Perform basic review without LLM."""
-        # Count QC issues
-        qc_count = len(qc_report) if qc_report is not None else 0
-        critical_count = 0
-        if qc_report is not None and "severity" in qc_report.columns:
-            critical_count = len(qc_report[qc_report["severity"] == "critical"])
+        """Perform basic review without LLM using STOPLIGHT rules."""
+        # Check for core variables
+        core_vars = ["SEX", "RACE", "ETHNIC", "COUNTRY"]
+        age_vars = ["AGE", "AGEGP"]
 
-        # Determine quality based on QC issues
-        if critical_count > 0:
-            overall_quality = "poor"
-            approved = False
-        elif qc_count > 10:
-            overall_quality = "needs_attention"
-            approved = False
-        elif qc_count > 0:
-            overall_quality = "acceptable"
-            approved = self.auto_approve_threshold in ["acceptable", "needs_attention"]
-        else:
+        # Check which core variables are present and populated
+        present = []
+        missing = []
+
+        for var in core_vars:
+            if var in df.columns and df[var].notna().any():
+                present.append(var)
+            else:
+                missing.append(var)
+
+        # Check AGE/AGEGP (at least one needed)
+        age_present = False
+        for age_var in age_vars:
+            if age_var in df.columns and df[age_var].notna().any():
+                present.append(age_var)
+                age_present = True
+                break
+
+        if not age_present:
+            missing.append("AGE/AGEGP")
+
+        # Determine stoplight based on rules
+        core_count = len(present)
+        missing_count = 5 - core_count
+
+        if missing_count == 0:
+            stoplight = "GREEN"
             overall_quality = "good"
-            approved = True
+        elif missing_count <= 2:
+            stoplight = "YELLOW"
+            overall_quality = "acceptable"
+        else:
+            stoplight = "RED"
+            overall_quality = "poor"
+
+        approved = stoplight == "GREEN"
 
         review_data = {
+            "stoplight": stoplight,
+            "approval": stoplight,
             "overall_quality": overall_quality,
-            "approval_status": "approved" if approved else "needs_revision",
             "approved": approved,
+            "core_variables_present": present,
+            "core_variables_missing": missing,
+            "core_variables_count": core_count,
+            "formatting_issues": [],
             "critical_issues": [],
-            "warnings": [f"{qc_count} QC issues found"] if qc_count > 0 else [],
-            "observations": [
-                f"Reviewed {len(df)} rows",
-                f"Found {qc_count} QC issues ({critical_count} critical)"
-            ],
-            "summary": f"Basic review: {overall_quality} quality, {qc_count} issues",
+            "recommendations": [f"Add missing core variables: {', '.join(missing)}"] if missing else [],
+            "reason": f"Basic review: {core_count}/5 core variables present",
             "review_type": "basic"
         }
 

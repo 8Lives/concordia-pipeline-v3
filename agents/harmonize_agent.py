@@ -407,6 +407,27 @@ class HarmonizeAgent(AgentBase):
         lineage["transform_operation"] = "Trim, convert floats to strings"
         return result, lineage
 
+    def _normalize_code_key(self, value) -> str:
+        """
+        Normalize a value for dictionary lookup.
+        Handles float-to-int conversion (1.0 -> "1") and string normalization.
+        This is critical because CSV/Excel may read numeric codes as floats.
+        """
+        if pd.isna(value):
+            return ""
+
+        val_str = str(value).strip()
+
+        # Handle float representation of integers (e.g., "1.0" -> "1")
+        try:
+            float_val = float(val_str)
+            if float_val == int(float_val):
+                return str(int(float_val))
+        except (ValueError, TypeError):
+            pass
+
+        return val_str
+
     def _harmonize_sex(
         self,
         df: pd.DataFrame,
@@ -423,17 +444,18 @@ class HarmonizeAgent(AgentBase):
         logger.info(f"SEX harmonization: dictionary keys={list(dictionary.keys())}, dict_codes={dict_codes}")
 
         # OPTIMIZATION: Pre-resolve unique values with LLM before applying to all rows
-        unique_values = df["SEX"].dropna().astype(str).str.strip().unique()
+        unique_values = df["SEX"].dropna().unique()
         llm_resolutions = {}
         unresolved_values = set()
 
         for val in unique_values:
-            val_str = str(val).strip()
-            val_upper = val_str.upper()
+            # Normalize value for lookup (handles float-to-int conversion)
+            val_normalized = self._normalize_code_key(val)
+            val_upper = val_normalized.upper()
 
             # Check if already resolvable without LLM
-            # Check dictionary with original value (v2 approach)
-            if val_str in dict_codes:
+            # Check dictionary with normalized value (handles "1.0" -> "1")
+            if val_normalized in dict_codes:
                 continue
             # Check with uppercased value as fallback
             if val_upper in dict_codes:
@@ -447,13 +469,13 @@ class HarmonizeAgent(AgentBase):
 
             # Need LLM resolution - do it once per unique value
             if self.use_llm_fallback and self.llm_service and self.llm_service.is_configured:
-                resolved = self._resolve_with_llm("SEX", val_str, valid_values)
+                resolved = self._resolve_with_llm("SEX", val_normalized, valid_values)
                 if resolved:
-                    llm_resolutions[val_str] = resolved
+                    llm_resolutions[val_normalized] = resolved
                 else:
-                    unresolved_values.add(val_str)
+                    unresolved_values.add(val_normalized)
             else:
-                unresolved_values.add(val_str)
+                unresolved_values.add(val_normalized)
 
         llm_used = bool(llm_resolutions)
 
@@ -461,12 +483,13 @@ class HarmonizeAgent(AgentBase):
             if pd.isna(x):
                 return None
 
-            val_str = str(x).strip()
-            val_upper = val_str.upper()
+            # Normalize value for lookup (handles float-to-int: "1.0" -> "1")
+            val_normalized = self._normalize_code_key(x)
+            val_upper = val_normalized.upper()
 
-            # Try dictionary first with original value (v2 approach)
-            if val_str in dict_codes:
-                decoded = dict_codes[val_str]
+            # Try dictionary first with normalized value
+            if val_normalized in dict_codes:
+                decoded = dict_codes[val_normalized]
                 return to_mixed_case(decoded)
 
             # Try dictionary with uppercased value as fallback
@@ -483,11 +506,11 @@ class HarmonizeAgent(AgentBase):
                 return to_mixed_case(val_upper)
 
             # Use pre-resolved LLM value
-            if val_str in llm_resolutions:
-                return llm_resolutions[val_str]
+            if val_normalized in llm_resolutions:
+                return llm_resolutions[val_normalized]
 
             # Return as-is with mixed case
-            return to_mixed_case(val_str)
+            return to_mixed_case(val_normalized)
 
         result = df["SEX"].apply(harmonize_sex)
         lineage["transform_operation"] = "Decode codes, normalize to mixed case"
@@ -526,17 +549,18 @@ class HarmonizeAgent(AgentBase):
         ]
 
         # OPTIMIZATION: Pre-resolve unique values with LLM before applying to all rows
-        unique_values = df["RACE"].dropna().astype(str).str.strip().unique()
+        unique_values = df["RACE"].dropna().unique()
         llm_resolutions = {}
         unresolved_values = set()
 
         for val in unique_values:
-            val_str = str(val).strip()
-            val_upper = val_str.upper()
+            # Normalize value for lookup (handles float-to-int conversion)
+            val_normalized = self._normalize_code_key(val)
+            val_upper = val_normalized.upper()
 
             # Check if already resolvable without LLM
-            # Check dictionary with original value first (v2 approach)
-            if val_str in dict_codes:
+            # Check dictionary with normalized value (handles "11.0" -> "11")
+            if val_normalized in dict_codes:
                 continue
             # Fallback to uppercased key
             if val_upper in dict_codes:
@@ -553,13 +577,13 @@ class HarmonizeAgent(AgentBase):
 
             # Need LLM resolution - do it once per unique value
             if self.use_llm_fallback and self.llm_service and self.llm_service.is_configured:
-                resolved = self._resolve_with_llm("RACE", val_str, valid_values)
+                resolved = self._resolve_with_llm("RACE", val_normalized, valid_values)
                 if resolved:
-                    llm_resolutions[val_str] = resolved
+                    llm_resolutions[val_normalized] = resolved
                 else:
-                    unresolved_values.add(val_str)
+                    unresolved_values.add(val_normalized)
             else:
-                unresolved_values.add(val_str)
+                unresolved_values.add(val_normalized)
 
         llm_used = bool(llm_resolutions)
 
@@ -567,12 +591,13 @@ class HarmonizeAgent(AgentBase):
             if pd.isna(x):
                 return None
 
-            val_str = str(x).strip()
-            val_upper = val_str.upper()
+            # Normalize value for lookup (handles float-to-int: "11.0" -> "11")
+            val_normalized = self._normalize_code_key(x)
+            val_upper = val_normalized.upper()
 
-            # Try dictionary first with original value (v2 approach)
-            if val_str in dict_codes:
-                decoded = dict_codes[val_str]
+            # Try dictionary first with normalized value
+            if val_normalized in dict_codes:
+                decoded = dict_codes[val_normalized]
                 # Apply additional normalization
                 decoded_upper = decoded.upper()
                 if decoded_upper in norm_map:
@@ -598,8 +623,8 @@ class HarmonizeAgent(AgentBase):
                     return valid
 
             # Use pre-resolved LLM value
-            if val_str in llm_resolutions:
-                return llm_resolutions[val_str]
+            if val_normalized in llm_resolutions:
+                return llm_resolutions[val_normalized]
 
             # Return as mixed case
             return val_mixed
@@ -709,18 +734,19 @@ class HarmonizeAgent(AgentBase):
             if pd.isna(x):
                 return None
 
-            val_str = str(x).strip()
-            val_upper = val_str.upper()
+            # Normalize value for lookup (handles float-to-int: "1.0" -> "1")
+            val_normalized = self._normalize_code_key(x)
+            val_upper = val_normalized.upper()
 
-            # Try dictionary with original value first (v2 approach)
-            if val_str in dict_codes:
-                return to_mixed_case(dict_codes[val_str])
+            # Try dictionary with normalized value first
+            if val_normalized in dict_codes:
+                return to_mixed_case(dict_codes[val_normalized])
 
             # Fallback to uppercased key
             if val_upper in dict_codes:
                 return to_mixed_case(dict_codes[val_upper])
 
-            return to_mixed_case(val_str)
+            return to_mixed_case(val_normalized)
 
         result = df["ETHNIC"].apply(harmonize_ethnic)
         lineage["transform_operation"] = "Decode codes, normalize to mixed case"
