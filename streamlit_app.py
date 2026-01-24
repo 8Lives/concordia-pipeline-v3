@@ -147,17 +147,24 @@ Important:
 
         if response.success and response.parsed_data:
             result = response.parsed_data
-            # Ensure proper structure
+            # Ensure proper structure and convert all keys to strings
             for var in list(result.keys()):
                 if not isinstance(result[var], dict):
                     del result[var]
                 elif "codes" not in result[var]:
                     result[var] = {"codes": result[var]} if isinstance(result[var], dict) else {"codes": {}}
 
+            # CRITICAL: Ensure all code keys are strings (JSON may parse "1" as integer)
+            for var in result:
+                if "codes" in result[var]:
+                    # Convert all keys to strings
+                    codes = result[var]["codes"]
+                    result[var]["codes"] = {str(k): v for k, v in codes.items()}
+
             logger.info(f"LLM parsed dictionary with {len(result)} variables")
             for var, data in result.items():
                 codes = data.get("codes", {})
-                logger.info(f"  {var}: {len(codes)} codes")
+                logger.info(f"  {var}: {len(codes)} codes - keys: {list(codes.keys())}")
             return result
         else:
             logger.error(f"LLM dictionary parsing failed: {response.error}")
@@ -335,7 +342,15 @@ def render_progress():
 
 
 def create_results_zip(result: PipelineResult) -> bytes:
-    """Create a ZIP file containing all pipeline results."""
+    """Create a ZIP file containing all pipeline results.
+
+    Includes:
+    - Harmonized data CSV
+    - QC report CSV
+    - Transformation report DOCX (with row-by-row details)
+
+    Excludes JSON files per user request.
+    """
     import io
     import zipfile
 
@@ -354,129 +369,161 @@ def create_results_zip(result: PipelineResult) -> bytes:
             qc_csv = result.qc_report.to_csv(index=False)
             zf.writestr(f"{trial_id}_qc_report.csv", qc_csv)
 
-        # Add mapping log
-        if result.mapping_log:
-            mapping_json = json.dumps(result.mapping_log, indent=2, default=str)
-            zf.writestr(f"{trial_id}_mapping_log.json", mapping_json)
-
-        # Add lineage
-        if result.lineage:
-            lineage_json = json.dumps(result.lineage, indent=2, default=str)
-            zf.writestr(f"{trial_id}_lineage.json", lineage_json)
-
-        # Add review result
-        if result.review_result:
-            review_json = json.dumps(result.review_result, indent=2, default=str)
-            zf.writestr(f"{trial_id}_review.json", review_json)
-
-        # Add metadata
-        metadata_json = json.dumps(result.metadata, indent=2, default=str)
-        zf.writestr(f"{trial_id}_metadata.json", metadata_json)
-
-        # Add transformation report (summary)
-        transformation_report = create_transformation_report(result)
-        zf.writestr(f"{trial_id}_transformation_report.txt", transformation_report)
+        # Add transformation report as DOCX (v2 format with row-by-row summary)
+        try:
+            docx_report = create_transformation_report_docx(result)
+            zf.writestr(f"{trial_id}_transformation_report.docx", docx_report)
+        except ImportError:
+            logger.warning("python-docx not installed, skipping DOCX report")
+        except Exception as e:
+            logger.warning(f"Could not create DOCX report: {e}")
 
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
 
 
-def create_transformation_report(result: PipelineResult) -> str:
-    """Create a human-readable transformation report."""
-    lines = [
-        "=" * 60,
-        "CONCORDIA PIPELINE v3 - TRANSFORMATION REPORT",
-        "=" * 60,
-        "",
-        f"Trial ID: {result.metadata.get('trial_id', 'Unknown')}",
-        f"Timestamp: {result.metadata.get('timestamp', 'Unknown')}",
-        f"Status: {'SUCCESS' if result.success else 'FAILED'}",
-        f"Rows Processed: {result.metadata.get('rows_processed', 0)}",
-        f"Execution Time: {result.execution_time_ms / 1000:.2f} seconds",
-        "",
-        "-" * 60,
-        "CONFIGURATION",
-        "-" * 60,
-        f"RAG Enabled: {result.metadata.get('rag_enabled', False)}",
-        f"LLM Enabled: {result.metadata.get('llm_enabled', False)}",
-        f"LLM Model: {result.metadata.get('llm_model', 'None')}",
-        f"LLM Tokens Used: {result.metadata.get('llm_tokens_used', 0)}",
-        f"Embedding Provider: {result.metadata.get('embedding_provider', 'None')}",
-        "",
+def create_transformation_report_docx(result: PipelineResult) -> bytes:
+    """
+    Create a DOCX transformation report matching v2 format.
+
+    Returns bytes for the DOCX file.
+    """
+    from docx import Document
+    from docx.shared import Inches, Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    import io
+
+    doc = Document()
+
+    # Title
+    title = doc.add_heading('Concordia Pipeline v3 - Transformation Report', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Summary section
+    doc.add_heading('Summary', level=1)
+    summary_table = doc.add_table(rows=6, cols=2)
+    summary_table.style = 'Table Grid'
+
+    summary_data = [
+        ('Trial ID', result.metadata.get('trial_id', 'Unknown')),
+        ('Timestamp', result.metadata.get('timestamp', 'Unknown')),
+        ('Status', 'SUCCESS' if result.success else 'FAILED'),
+        ('Rows Processed', str(result.metadata.get('rows_processed', 0))),
+        ('Execution Time', f"{result.execution_time_ms / 1000:.2f} seconds"),
+        ('LLM Model', result.metadata.get('llm_model', 'None')),
     ]
 
-    # Add QC summary
-    if result.qc_report is not None:
-        lines.extend([
-            "-" * 60,
-            "QC SUMMARY",
-            "-" * 60,
-            f"Total Issues: {len(result.qc_report)}",
-        ])
-        if len(result.qc_report) > 0:
-            # Group by severity if available
-            if 'severity' in result.qc_report.columns:
-                severity_counts = result.qc_report['severity'].value_counts().to_dict()
-                for sev, count in severity_counts.items():
-                    lines.append(f"  {sev}: {count}")
-        lines.append("")
+    for i, (label, value) in enumerate(summary_data):
+        summary_table.rows[i].cells[0].text = label
+        summary_table.rows[i].cells[1].text = str(value)
 
-    # Add review summary
-    if result.review_result:
-        lines.extend([
-            "-" * 60,
-            "LLM REVIEW SUMMARY",
-            "-" * 60,
-            f"Approval: {result.review_result.get('approval', 'Unknown')}",
-            f"Quality: {result.review_result.get('overall_quality', 'Unknown')}",
-        ])
-        if result.review_result.get('reason'):
-            lines.append(f"Summary: {result.review_result.get('reason')}")
-        lines.append("")
+    doc.add_paragraph()
 
-    # Add lineage summary
+    # Transformation Details section (row-by-row like v2)
+    doc.add_heading('Transformation Details', level=1)
+
     if result.lineage:
-        lines.extend([
-            "-" * 60,
-            "TRANSFORMATION LINEAGE",
-            "-" * 60,
-        ])
-        for entry in result.lineage:
-            var = entry.get('variable', 'Unknown')
-            transform = entry.get('transformation', 'None')
-            changed = entry.get('rows_changed', 0)
-            pct = entry.get('percent_changed', 0)
-            lines.append(f"  {var}: {transform} ({changed} rows, {pct:.1f}% changed)")
-        lines.append("")
+        # Create table with 7 columns like v2
+        trans_table = doc.add_table(rows=1, cols=7)
+        trans_table.style = 'Table Grid'
 
-    # Add warnings and errors
+        # Headers
+        headers = ['Variable', 'Source', 'Operation', 'Details', 'Changed', '%', 'Missing']
+        hdr_cells = trans_table.rows[0].cells
+        for i, header in enumerate(headers):
+            hdr_cells[i].text = header
+            # Bold headers
+            for paragraph in hdr_cells[i].paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+
+        # Data rows
+        for entry in result.lineage:
+            row_cells = trans_table.add_row().cells
+            row_cells[0].text = entry.get('variable', 'Unknown')
+            row_cells[1].text = entry.get('source_column', '-') or '-'
+            row_cells[2].text = entry.get('mapping_operation', '-') or '-'
+            row_cells[3].text = entry.get('transformation', 'None') or 'None'
+            row_cells[4].text = str(entry.get('rows_changed', 0))
+            row_cells[5].text = f"{entry.get('percent_changed', 0):.1f}%"
+
+            # Calculate missing (if available in details)
+            details = entry.get('transformation_details', {})
+            missing = details.get('missing_count', '-')
+            row_cells[6].text = str(missing) if missing != '-' else '-'
+
+    doc.add_paragraph()
+
+    # QC Report section
+    if result.qc_report is not None and len(result.qc_report) > 0:
+        doc.add_heading('QC Report', level=1)
+
+        qc_table = doc.add_table(rows=1, cols=5)
+        qc_table.style = 'Table Grid'
+
+        # Headers
+        qc_headers = ['Variable', 'Check', 'Severity', 'Count', 'Message']
+        hdr_cells = qc_table.rows[0].cells
+        for i, header in enumerate(qc_headers):
+            hdr_cells[i].text = header
+            for paragraph in hdr_cells[i].paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+
+        # Data rows (limit to first 50 issues)
+        for idx, row in result.qc_report.head(50).iterrows():
+            row_cells = qc_table.add_row().cells
+            row_cells[0].text = str(row.get('variable', '-'))
+            row_cells[1].text = str(row.get('check', '-'))
+            row_cells[2].text = str(row.get('severity', '-'))
+            row_cells[3].text = str(row.get('count', '-'))
+            row_cells[4].text = str(row.get('message', '-'))
+
+        if len(result.qc_report) > 50:
+            doc.add_paragraph(f"Note: Showing first 50 of {len(result.qc_report)} QC issues.")
+
+        doc.add_paragraph()
+
+    # LLM Review section
+    if result.review_result:
+        doc.add_heading('LLM Review', level=1)
+
+        review = result.review_result
+        doc.add_paragraph(f"Approval: {review.get('approval', 'Unknown')}")
+        doc.add_paragraph(f"Quality: {review.get('overall_quality', 'Unknown')}")
+
+        if review.get('reason'):
+            doc.add_paragraph(f"Summary: {review.get('reason')}")
+
+        if review.get('critical_issues'):
+            doc.add_heading('Critical Issues', level=2)
+            for issue in review['critical_issues']:
+                doc.add_paragraph(f"• {issue}", style='List Bullet')
+
+        if review.get('recommendations'):
+            doc.add_heading('Recommendations', level=2)
+            for rec in review['recommendations']:
+                doc.add_paragraph(f"• {rec}", style='List Bullet')
+
+        doc.add_paragraph()
+
+    # Warnings and Errors
     if result.warnings:
-        lines.extend([
-            "-" * 60,
-            "WARNINGS",
-            "-" * 60,
-        ])
+        doc.add_heading('Warnings', level=1)
         for w in result.warnings:
-            lines.append(f"  - {w}")
-        lines.append("")
+            doc.add_paragraph(f"• {w}", style='List Bullet')
 
     if result.errors:
-        lines.extend([
-            "-" * 60,
-            "ERRORS",
-            "-" * 60,
-        ])
+        doc.add_heading('Errors', level=1)
         for e in result.errors:
-            lines.append(f"  - {e}")
-        lines.append("")
+            doc.add_paragraph(f"• {e}", style='List Bullet')
 
-    lines.extend([
-        "=" * 60,
-        "END OF REPORT",
-        "=" * 60,
-    ])
-
-    return "\n".join(lines)
+    # Save to bytes
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 def render_results(result: PipelineResult):

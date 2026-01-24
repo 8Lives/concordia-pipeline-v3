@@ -18,6 +18,7 @@ anthropic>=0.18.0
 openpyxl>=3.1.0          # Excel files
 pyreadstat>=1.2.0        # SAS7BDAT files (recommended)
 # sas7bdat>=2.2.0        # Alternative SAS reader (optional)
+python-docx>=0.8.11      # Word document generation
 
 # Optional - for Voyage embeddings
 # voyageai>=0.1.0
