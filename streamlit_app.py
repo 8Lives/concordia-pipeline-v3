@@ -90,7 +90,7 @@ def init_session_state():
 
 
 def progress_callback(stage: str, status: str, message: str, progress: float):
-    """Callback for pipeline progress updates."""
+    """Legacy callback for pipeline progress updates (kept for compatibility)."""
     st.session_state.current_stage = stage
     st.session_state.progress_log.append({
         "timestamp": datetime.now().isoformat(),
@@ -445,24 +445,64 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict, data_dict_file=None
         match = re.search(r'(NCT\d{8})', uploaded_file.name)
         trial_id = match.group(1) if match else Path(uploaded_file.name).stem
 
-    # Create orchestrator
+    # Create progress display elements
+    progress_container = st.container()
+    with progress_container:
+        progress_bar = st.progress(0, text="Initializing pipeline...")
+        status_text = st.empty()
+
+    # Create a progress callback that updates Streamlit elements
+    def streamlit_progress_callback(stage: str, status: str, message: str, progress: float):
+        """Update Streamlit progress elements in real-time."""
+        stage_emoji = {
+            "init": "🔧",
+            "ingest": "📥",
+            "map": "🗺️",
+            "harmonize": "✨",
+            "qc": "✅",
+            "review": "🔎",
+            "finalize": "📦",
+            "complete": "🎉",
+            "error": "❌"
+        }
+        emoji = stage_emoji.get(stage, "⏳")
+
+        # Update progress bar (clamp to 0-1 range)
+        progress_value = max(0.0, min(1.0, progress))
+        progress_bar.progress(progress_value, text=f"{emoji} {stage.upper()}: {message}")
+
+        # Also log to session state for history
+        st.session_state.progress_log.append({
+            "timestamp": datetime.now().isoformat(),
+            "stage": stage,
+            "status": status,
+            "message": message,
+            "progress": progress
+        })
+
+    # Create orchestrator with real-time progress callback
     reset_settings()
     orchestrator = create_orchestrator(
         use_rag=config["use_rag"],
         use_llm=config["use_llm"],
         enable_review=config["enable_review"],
-        progress_callback=progress_callback,
+        progress_callback=streamlit_progress_callback,
         embedding_provider=config["embedding_provider"]
     )
 
-    # Run pipeline
-    with st.spinner("Running pipeline..."):
-        result = orchestrator.run(
-            input_df=df,
-            trial_id=trial_id,
-            skip_qc=config["skip_qc"],
-            data_dict=data_dict
-        )
+    # Run pipeline (no spinner - we have the progress bar)
+    result = orchestrator.run(
+        input_df=df,
+        trial_id=trial_id,
+        skip_qc=config["skip_qc"],
+        data_dict=data_dict
+    )
+
+    # Clear progress elements after completion
+    if result.success:
+        progress_bar.progress(1.0, text="🎉 Pipeline complete!")
+    else:
+        progress_bar.progress(1.0, text="❌ Pipeline failed")
 
     st.session_state.pipeline_result = result
     return result
@@ -532,9 +572,6 @@ def main():
                 result = run_pipeline(uploaded_file, trial_id, config, data_dict_file)
         else:
             st.info("Upload a file to begin")
-
-        # Show progress
-        render_progress()
 
     # Results section
     st.divider()
