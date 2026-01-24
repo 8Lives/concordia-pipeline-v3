@@ -1,0 +1,4 @@
+TRIAL,SUBJID,SEX,RACE,AGE,AGEU,AGEGP,ETHNIC,COUNTRY,SITEID,STUDYID,USUBJID,ARMCD,ARM,BRTHDTC,RFSTDTC,RFENDTC,DOMAIN
+NCT001,1,Male,Caucasian,45.0,Years,,Hispanic,United States,,,NCT001-1,,,,,,DM
+NCT001,2,Female,Black or African American,32.0,Years,,Not Hispanic,Canada,,,NCT001-2,,,,,,DM
+NCT001,3,Male,Asian,67.0,Years,,Hispanic,United Kingdom,,,NCT001-3,,,,,,DM

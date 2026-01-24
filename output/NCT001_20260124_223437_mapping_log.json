@@ -1,0 +1,275 @@
+[
+  {
+    "output_variable": "TRIAL",
+    "source_column": null,
+    "operation": "Constant",
+    "details": {
+      "source": "filename",
+      "value": "NCT001"
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "SUBJID",
+    "source_column": "SUBJID",
+    "operation": "Copy",
+    "details": {
+      "matched_from": [
+        "SUBJID",
+        "RSUBJID",
+        "RUSUBJID",
+        "SUBJ",
+        "SUBJECT",
+        "SUBJECTID",
+        "PATID",
+        "PATIENTID",
+        "PTNO",
+        "PTID",
+        "PID",
+        "PID_A"
+      ],
+      "validation": {
+        "is_valid": true,
+        "unique_count": 3,
+        "uniqueness_ratio": 1.0,
+        "warning": null
+      }
+    },
+    "non_null_count": 3,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "SEX",
+    "source_column": "SEX",
+    "operation": "Copy",
+    "details": {
+      "matched_from": [
+        "SEX",
+        "SEXC",
+        "GENDER",
+        "SEXCD"
+      ]
+    },
+    "non_null_count": 3,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "RACE",
+    "source_column": "RACE",
+    "operation": "Copy",
+    "details": {
+      "matched_from": [
+        "RACE",
+        "RACESC",
+        "RACECD",
+        "RACEN"
+      ]
+    },
+    "non_null_count": 3,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "AGE",
+    "source_column": "AGE",
+    "operation": "Copy",
+    "details": {},
+    "non_null_count": 3,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "AGEU",
+    "source_column": null,
+    "operation": "Missing",
+    "details": {
+      "searched": [
+        "AGEU",
+        "AGEUNITS",
+        "AGEUNIT"
+      ]
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "AGEGP",
+    "source_column": null,
+    "operation": "Blank",
+    "details": {
+      "reason": "AGE is available"
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "ETHNIC",
+    "source_column": "ETHNIC",
+    "operation": "Copy",
+    "details": {
+      "matched_from": [
+        "ETHNIC",
+        "ETHGRP",
+        "ETHNICGRP"
+      ]
+    },
+    "non_null_count": 3,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "COUNTRY",
+    "source_column": "COUNTRY",
+    "operation": "Copy",
+    "details": {
+      "matched_from": [
+        "COUNTRY",
+        "CNTRY"
+      ]
+    },
+    "non_null_count": 3,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "SITEID",
+    "source_column": null,
+    "operation": "Missing",
+    "details": {
+      "searched": [
+        "SITEID",
+        "RSITEID",
+        "SITE",
+        "SITENO",
+        "CENT",
+        "CENTER"
+      ]
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "STUDYID",
+    "source_column": null,
+    "operation": "Missing",
+    "details": {
+      "searched": [
+        "STUDYID",
+        "STUDY",
+        "PROTNO"
+      ]
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "USUBJID",
+    "source_column": null,
+    "operation": "Derive",
+    "details": {
+      "derivation": "STUDYID||'-'||SUBJID or TRIAL||'-'||SUBJID"
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "ARMCD",
+    "source_column": null,
+    "operation": "Missing",
+    "details": {
+      "searched": [
+        "ARMCD",
+        "TRTARMCD",
+        "TRTCODE",
+        "TRTN"
+      ]
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "ARM",
+    "source_column": null,
+    "operation": "Missing",
+    "details": {
+      "searched": [
+        "ARM",
+        "TRTARM",
+        "TRTLONG",
+        "ACTTRT",
+        "TRT"
+      ]
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "BRTHDTC",
+    "source_column": null,
+    "operation": "Missing",
+    "details": {
+      "searched": [
+        "BRTHDTC",
+        "BIRTHDT",
+        "DOB",
+        "BRTHDT"
+      ]
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "RFSTDTC",
+    "source_column": null,
+    "operation": "Missing",
+    "details": {
+      "searched": [
+        "RFSTDTC",
+        "RFXSTDTC",
+        "RANDDTC",
+        "RANDDT"
+      ]
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "RFENDTC",
+    "source_column": null,
+    "operation": "Missing",
+    "details": {
+      "searched": [
+        "RFENDTC",
+        "RFXENDTC",
+        "ENDDT"
+      ]
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  },
+  {
+    "output_variable": "DOMAIN",
+    "source_column": null,
+    "operation": "Constant",
+    "details": {
+      "value": "DM"
+    },
+    "non_null_count": 0,
+    "null_count": 0,
+    "spec_reference": null
+  }
+]

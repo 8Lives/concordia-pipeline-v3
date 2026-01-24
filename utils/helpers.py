@@ -49,15 +49,15 @@ def to_mixed_case(value: str) -> str:
     Convert string to mixed case (title case).
     Handles special cases like abbreviations and preserves lowercase for
     prepositions/articles that shouldn't be capitalized.
+
+    Note: This function always converts to mixed case. Code expansion
+    (M->Male, USA->United States) should be handled by the harmonization
+    code maps BEFORE calling this function.
     """
     if not value or pd.isna(value):
         return value
 
     value = str(value).strip()
-
-    # Don't modify if it looks like an identifier or code
-    if re.match(r'^[A-Z0-9_-]+$', value) and len(value) <= 10:
-        return value
 
     # Words that should remain lowercase (unless first word)
     lowercase_words = {'or', 'and', 'of', 'the', 'in', 'on', 'at', 'to', 'for',
