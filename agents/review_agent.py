@@ -73,7 +73,9 @@ class ReviewAgent(AgentBase):
         """Execute the review process."""
         try:
             # Use harmonized_df (from harmonize agent) if available, otherwise fall back to df
-            df = context.get("harmonized_df") or context.get("df")
+            # Use explicit None check to avoid DataFrame truth value ambiguity
+            harmonized_df = context.get("harmonized_df")
+            df = harmonized_df if harmonized_df is not None else context.get("df")
             qc_report = context.get("qc_report")
             mapping_log = context.get("mapping_log", [])
             lineage_log = context.get("harmonize_lineage_log", [])

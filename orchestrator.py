@@ -347,7 +347,9 @@ class PipelineOrchestrator:
             self._update_progress("finalize", "running", "Finalizing results...", 0.9)
 
             # Get harmonized data (stored as harmonized_df by harmonize agent)
-            result.harmonized_data = context.get("harmonized_df") or context.get("df")
+            # Use explicit None check to avoid DataFrame truth value ambiguity
+            harmonized_df = context.get("harmonized_df")
+            result.harmonized_data = harmonized_df if harmonized_df is not None else context.get("df")
             result.success = True
             result.metadata = {
                 "trial_id": context.get("trial_id"),
