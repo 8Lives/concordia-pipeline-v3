@@ -68,6 +68,263 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ---------------------------------------------------------------------------
+# CRDSA Brand Constants
+# ---------------------------------------------------------------------------
+BRAND_BLUE = "#3B63A8"
+BRAND_PURPLE = "#8B4DAA"
+BRAND_TEAL = "#207870"
+BRAND_NAVY = "#1A1F3C"
+BRAND_TEXT = "#3A3A3C"
+BRAND_LIGHT_BG = "#F7F8FA"
+BRAND_BORDER = "#E2E2E2"
+BRAND_RED = "#C0392B"
+BRAND_AMBER = "#D4A017"
+
+
+def inject_brand_css():
+    """Inject CRDSA brand CSS overrides for a light-themed, professional UI."""
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&display=swap');
+
+    /* ---- Global font override ---- */
+    html, body, [class*="css"] {
+        font-family: 'Barlow', sans-serif;
+        color: #3A3A3C;
+    }
+
+    /* ---- Headings ---- */
+    h1, h2, h3 {
+        font-family: 'Barlow Semi Condensed', sans-serif !important;
+        color: #1A1F3C !important;
+        font-weight: 600;
+    }
+
+    /* ---- Sidebar — dark navy ---- */
+    section[data-testid="stSidebar"] {
+        background-color: #1A1F3C;
+    }
+    section[data-testid="stSidebar"] h1,
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] .stMarkdown,
+    section[data-testid="stSidebar"] .stMarkdown p,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] .stCaption,
+    section[data-testid="stSidebar"] small {
+        color: #F0F0F1 !important;
+    }
+    section[data-testid="stSidebar"] hr {
+        border-color: rgba(240,240,241,0.15);
+    }
+    section[data-testid="stSidebar"] .stCheckbox label span {
+        color: #F0F0F1 !important;
+    }
+    section[data-testid="stSidebar"] .stSelectbox label,
+    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] {
+        color: #F0F0F1 !important;
+    }
+
+    /* ---- Primary button — brand blue ---- */
+    .stButton > button[kind="primary"],
+    .stButton > button[data-testid="stBaseButton-primary"] {
+        background-color: #3B63A8 !important;
+        border: none !important;
+        color: white !important;
+        font-family: 'Barlow Semi Condensed', sans-serif;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        border-radius: 6px;
+    }
+    .stButton > button[kind="primary"]:hover,
+    .stButton > button[data-testid="stBaseButton-primary"]:hover {
+        background-color: #2E4F8A !important;
+    }
+
+    /* ---- Secondary / download buttons — ghost style ---- */
+    .stDownloadButton > button,
+    .stButton > button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]) {
+        background-color: transparent !important;
+        border: 1.5px solid #3B63A8 !important;
+        color: #3B63A8 !important;
+        font-family: 'Barlow Semi Condensed', sans-serif;
+        font-weight: 600;
+        border-radius: 6px;
+    }
+    .stDownloadButton > button:hover,
+    .stButton > button:not([kind="primary"]):hover {
+        background-color: #EDF2FA !important;
+    }
+
+    /* ---- Tabs — brand blue underline ---- */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0;
+        border-bottom: 2px solid #E2E2E2;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-family: 'Barlow Semi Condensed', sans-serif;
+        font-weight: 500;
+        color: #3A3A3C;
+        padding: 10px 20px;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #3B63A8 !important;
+        border-bottom: 3px solid #3B63A8;
+        font-weight: 600;
+    }
+
+    /* ---- Metric cards ---- */
+    [data-testid="stMetric"] {
+        background-color: #F7F8FA;
+        border: 1px solid #E2E2E2;
+        border-radius: 8px;
+        padding: 12px 16px;
+    }
+
+    /* ---- Progress bar — brand gradient ---- */
+    .stProgress > div > div > div {
+        background: linear-gradient(135deg, #3B63A8 0%, #8B4DAA 100%) !important;
+    }
+
+    /* ---- Expander headers ---- */
+    .streamlit-expanderHeader,
+    [data-testid="stExpander"] summary {
+        font-family: 'Barlow Semi Condensed', sans-serif;
+        font-weight: 600;
+        color: #1A1F3C;
+    }
+
+    /* ---- Alert accent colors ---- */
+    .stAlert [data-testid="stNotificationContentSuccess"] { border-left-color: #207870 !important; }
+    .stAlert [data-testid="stNotificationContentError"]   { border-left-color: #C0392B !important; }
+    .stAlert [data-testid="stNotificationContentWarning"] { border-left-color: #D4A017 !important; }
+    .stAlert [data-testid="stNotificationContentInfo"]    { border-left-color: #3B63A8 !important; }
+
+    /* ---- Dividers ---- */
+    hr { border-color: #E2E2E2 !important; }
+
+    /* ---- File uploader area ---- */
+    [data-testid="stFileUploader"] {
+        border-radius: 8px;
+    }
+
+    /* ---- Dataframe container ---- */
+    [data-testid="stDataFrame"] {
+        border: 1px solid #E2E2E2;
+        border-radius: 8px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Brand UI Components
+# ---------------------------------------------------------------------------
+
+def status_badge(label: str, level: str = "info") -> str:
+    """Return an HTML badge matching CRDSA brand colors."""
+    colors = {
+        "success": (BRAND_TEAL, "#E8F5F3"),
+        "error":   (BRAND_RED, "#FDEDEB"),
+        "warning": (BRAND_AMBER, "#FFF8E1"),
+        "info":    (BRAND_BLUE, "#EDF2FA"),
+        "purple":  (BRAND_PURPLE, "#F5EDF8"),
+        "neutral": ("#6B7280", "#F3F4F6"),
+    }
+    fg, bg = colors.get(level, colors["info"])
+    return (
+        f'<span style="background:{bg}; color:{fg}; padding:4px 12px; '
+        f'border-radius:4px; font-family:Barlow Semi Condensed,sans-serif; '
+        f'font-weight:600; font-size:0.85rem; display:inline-block;">{label}</span>'
+    )
+
+
+def metric_card(label: str, value: str, accent: str = BRAND_BLUE) -> str:
+    """Render a metric as a branded card with colored top-border accent."""
+    return f"""
+    <div style="
+        background: white;
+        border: 1px solid {BRAND_BORDER};
+        border-top: 3px solid {accent};
+        border-radius: 8px;
+        padding: 16px 20px;
+        text-align: center;
+        min-height: 90px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    ">
+        <p style="margin:0; font-size:0.75rem; color:#6B7280; font-family:Barlow,sans-serif;
+                   text-transform:uppercase; letter-spacing:0.06em;">{label}</p>
+        <p style="margin:6px 0 0; font-size:1.35rem; font-weight:700;
+                   font-family:Barlow Semi Condensed,sans-serif; color:{BRAND_NAVY};">{value}</p>
+    </div>
+    """
+
+
+def stoplight_panel(level: str, reason: str = "",
+                    core_present: list = None, core_missing: list = None) -> str:
+    """Render LLM review stoplight as a professional left-border panel."""
+    color_map = {"GREEN": BRAND_TEAL, "YELLOW": BRAND_AMBER, "RED": BRAND_RED}
+    bg_map = {"GREEN": "#E8F5F3", "YELLOW": "#FFF8E1", "RED": "#FDEDEB"}
+    level_upper = level.upper()
+    color = color_map.get(level_upper, BRAND_BLUE)
+    bg = bg_map.get(level_upper, "#EDF2FA")
+
+    html = f"""
+    <div style="background:{bg}; border-left:4px solid {color};
+                border-radius:0 8px 8px 0; padding:20px; margin:12px 0;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+            <span style="width:14px; height:14px; border-radius:50%;
+                         background:{color}; display:inline-block;"></span>
+            <span style="font-family:Barlow Semi Condensed,sans-serif; font-weight:700;
+                         font-size:1.1rem; color:{color};">
+                REVIEW: {level_upper}
+            </span>
+        </div>
+    """
+    if reason:
+        html += f'<p style="margin:4px 0 0; color:{BRAND_TEXT}; font-family:Barlow,sans-serif;">{reason}</p>'
+
+    if core_present:
+        html += (
+            f'<p style="margin:10px 0 2px; font-size:0.8rem; color:#6B7280; '
+            f'text-transform:uppercase; letter-spacing:0.05em;">Core Variables Present</p>'
+            f'<p style="margin:0; color:{BRAND_NAVY}; font-weight:500;">{", ".join(core_present)}</p>'
+        )
+    if core_missing:
+        html += (
+            f'<p style="margin:10px 0 2px; font-size:0.8rem; color:#6B7280; '
+            f'text-transform:uppercase; letter-spacing:0.05em;">Core Variables Missing</p>'
+            f'<p style="margin:0; color:{BRAND_RED}; font-weight:500;">{", ".join(core_missing)}</p>'
+        )
+    html += "</div>"
+    return html
+
+
+def pipeline_stepper(stages: list, current_index: int, failed: bool = False) -> str:
+    """Render a horizontal pipeline stage stepper."""
+    html = '<div style="display:flex; gap:6px; margin:16px 0;">'
+    for i, stage in enumerate(stages):
+        if failed and i == current_index:
+            color, bg = BRAND_RED, "#FDEDEB"
+        elif i < current_index:
+            color, bg = BRAND_TEAL, "#E8F5F3"
+        elif i == current_index:
+            color, bg = BRAND_BLUE, "#EDF2FA"
+        else:
+            color, bg = "#9CA3AF", "#F3F4F6"
+        html += f'''
+        <div style="flex:1; text-align:center; padding:10px 4px;
+                    background:{bg}; border-radius:6px; border:1px solid {color}33;">
+            <span style="font-family:Barlow Semi Condensed,sans-serif; font-weight:600;
+                         font-size:0.75rem; color:{color}; letter-spacing:0.03em;">{stage}</span>
+        </div>'''
+    html += '</div>'
+    return html
+
 # Import pipeline components
 try:
     from orchestrator import PipelineOrchestrator, create_orchestrator, PipelineResult
@@ -204,7 +461,15 @@ def progress_callback(stage: str, status: str, message: str, progress: float):
 def render_sidebar():
     """Render the sidebar with configuration options."""
     with st.sidebar:
-        st.title("⚙️ Configuration")
+        # Branded sidebar header
+        st.markdown("""
+        <div style="text-align:center; padding:4px 0 20px;">
+            <p style="font-family:Barlow Semi Condensed,sans-serif; font-weight:700;
+                      font-size:1.25rem; color:#F0F0F1; margin:0; letter-spacing:0.04em;">CONCORDIA</p>
+            <p style="font-size:0.75rem; color:#8B9DC3; margin:2px 0 0;
+                      font-family:Barlow,sans-serif;">Pipeline v3</p>
+        </div>
+        """, unsafe_allow_html=True)
 
         st.subheader("RAG Settings")
         use_rag = st.checkbox(
@@ -243,33 +508,39 @@ def render_sidebar():
 
         st.divider()
 
-        st.subheader("About")
         st.markdown("""
-        **Concordia Pipeline v3**
+        <div style="font-family:Barlow,sans-serif; font-size:0.85rem; color:#C0C8D8; line-height:1.6;">
+            <p style="margin:0 0 6px; font-weight:600; color:#F0F0F1;">About</p>
+            RAG-enhanced harmonization for SDTM Demographics (DM) domain.
+            Dynamic spec retrieval, LLM-powered resolution, 18 output variables,
+            automated QC, review stage, and full lineage tracking.
+        </div>
+        """, unsafe_allow_html=True)
 
-        RAG-enhanced harmonization for
-        SDTM Demographics (DM) domain.
-
-        Features:
-        - 🔍 Dynamic spec retrieval
-        - 🤖 LLM-powered resolution
-        - 📊 18 output variables
-        - ✅ Automated QC checks
-        - 🔎 LLM Review stage
-        - 📝 Full lineage tracking
-        """)
-
-        # Show secrets status
+        # API key status — clean indicators
         st.divider()
-        st.subheader("🔑 API Keys")
+        st.subheader("API Keys")
 
         hf_configured = bool(os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("HF_TOKEN"))
         anthropic_configured = bool(os.environ.get("ANTHROPIC_API_KEY"))
         voyage_configured = bool(os.environ.get("VOYAGE_API_KEY"))
 
-        st.markdown(f"- HuggingFace: {'✅' if hf_configured else '❌'}")
-        st.markdown(f"- Anthropic: {'✅' if anthropic_configured else '⚪ (optional)'}")
-        st.markdown(f"- Voyage AI: {'✅' if voyage_configured else '⚪ (optional)'}")
+        def _key_dot(configured, optional=False):
+            if configured:
+                return f'<span style="color:{BRAND_TEAL}; font-weight:600;">Connected</span>'
+            elif optional:
+                return '<span style="color:#6B7280;">Optional</span>'
+            else:
+                return f'<span style="color:{BRAND_AMBER}; font-weight:600;">Missing</span>'
+
+        st.markdown(
+            f'<div style="font-family:Barlow,sans-serif; font-size:0.85rem; line-height:2; color:#C0C8D8;">'
+            f'HuggingFace: {_key_dot(hf_configured)}<br>'
+            f'Anthropic: {_key_dot(anthropic_configured, optional=True)}<br>'
+            f'Voyage AI: {_key_dot(voyage_configured, optional=True)}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
         if not hf_configured:
             st.caption("Add HUGGINGFACE_TOKEN to .streamlit/secrets.toml")
@@ -285,7 +556,7 @@ def render_sidebar():
 
 def render_file_upload():
     """Render file upload section."""
-    st.subheader("📁 Input Data")
+    st.subheader("Input Data")
 
     col1, col2 = st.columns([2, 1])
 
@@ -304,7 +575,7 @@ def render_file_upload():
         )
 
     # Optional data dictionary upload
-    with st.expander("📖 Data Dictionary (Optional)", expanded=False):
+    with st.expander("Data Dictionary (Optional)", expanded=False):
         st.caption("Upload a data dictionary to improve column mapping accuracy")
         data_dict_file = st.file_uploader(
             "Upload data dictionary",
@@ -314,33 +585,46 @@ def render_file_upload():
         )
 
         if data_dict_file:
-            st.success(f"✅ Data dictionary loaded: {data_dict_file.name}")
+            st.success(f"Data dictionary loaded: {data_dict_file.name}")
 
     return uploaded_file, trial_id, data_dict_file if 'data_dict_file' in dir() else None
 
 
 def render_progress():
-    """Render progress indicators."""
+    """Render progress indicators with horizontal pipeline stepper."""
     if st.session_state.progress_log:
         latest = st.session_state.progress_log[-1]
 
-        # Progress bar
-        progress_bar = st.progress(latest["progress"])
+        # Determine current stage index for the stepper
+        stage_order = ["INGEST", "MAP", "HARMONIZE", "QC", "REVIEW"]
+        current_stage = latest["stage"].upper()
+        is_error = current_stage == "ERROR"
+        is_complete = current_stage in ("COMPLETE", "FINALIZE")
 
-        # Status message
-        stage_emoji = {
-            "init": "🔧",
-            "ingest": "📥",
-            "map": "🗺️",
-            "harmonize": "✨",
-            "qc": "✅",
-            "review": "🔎",
-            "finalize": "📦",
-            "complete": "🎉",
-            "error": "❌"
-        }
-        emoji = stage_emoji.get(latest["stage"], "⏳")
-        st.info(f"{emoji} **{latest['stage'].upper()}**: {latest['message']}")
+        if is_complete:
+            current_idx = len(stage_order)  # all stages done
+        elif current_stage in stage_order:
+            current_idx = stage_order.index(current_stage)
+        else:
+            current_idx = 0
+
+        # Render the horizontal stepper
+        st.markdown(
+            pipeline_stepper(stage_order, current_idx, failed=is_error),
+            unsafe_allow_html=True
+        )
+
+        # Progress bar
+        st.progress(latest["progress"])
+
+        # Status message — use badge instead of emoji
+        level = "error" if is_error else ("success" if is_complete else "info")
+        badge = status_badge(latest["stage"].upper(), level)
+        st.markdown(
+            f'{badge} <span style="margin-left:10px; font-family:Barlow,sans-serif; '
+            f'color:{BRAND_TEXT};">{latest["message"]}</span>',
+            unsafe_allow_html=True
+        )
 
 
 def create_results_zip(result: PipelineResult) -> bytes:
@@ -534,83 +818,81 @@ def create_transformation_report_docx(result: PipelineResult) -> bytes:
 
 
 def render_results(result: PipelineResult):
-    """Render pipeline results."""
-    st.header("📊 Results")
+    """Render pipeline results with branded card metrics and stoplight panel."""
+    st.header("Results")
 
-    # Summary metrics
+    # --- Row 1: Summary metric cards (colored top-border accents) ---
+    rows = len(result.harmonized_data) if result.harmonized_data is not None else 0
+    qc_issues = len(result.qc_report) if result.qc_report is not None else 0
+    time_sec = result.execution_time_ms / 1000
+
+    status_text = "Success" if result.success else "Failed"
+    status_color = BRAND_TEAL if result.success else BRAND_RED
+
     col1, col2, col3, col4 = st.columns(4)
-
     with col1:
-        st.metric(
-            "Status",
-            "✅ Success" if result.success else "❌ Failed"
-        )
-
+        st.markdown(metric_card("Status", status_text, status_color), unsafe_allow_html=True)
     with col2:
-        rows = len(result.harmonized_data) if result.harmonized_data is not None else 0
-        st.metric("Rows Processed", rows)
-
+        st.markdown(metric_card("Rows Processed", str(rows), BRAND_BLUE), unsafe_allow_html=True)
     with col3:
-        qc_issues = len(result.qc_report) if result.qc_report is not None else 0
-        st.metric("QC Issues", qc_issues)
-
+        qc_color = BRAND_TEAL if qc_issues == 0 else BRAND_AMBER
+        st.markdown(metric_card("QC Issues", str(qc_issues), qc_color), unsafe_allow_html=True)
     with col4:
-        time_sec = result.execution_time_ms / 1000
-        st.metric("Time", f"{time_sec:.1f}s")
+        st.markdown(metric_card("Execution Time", f"{time_sec:.1f}s", BRAND_PURPLE), unsafe_allow_html=True)
 
-    # LLM metrics row
+    # --- Row 2: LLM metric cards ---
+    llm_enabled = result.metadata.get("llm_enabled", False)
+    tokens = result.metadata.get("llm_tokens_used", 0)
+    model = result.metadata.get("llm_model", "none")
+    review_status = "N/A"
+    if result.review_result:
+        approval = result.review_result.get("approval", "unknown")
+        review_status = approval.replace("_", " ").title()
+
     col5, col6, col7, col8 = st.columns(4)
-
     with col5:
-        llm_enabled = result.metadata.get("llm_enabled", False)
-        st.metric("LLM", "✅ Enabled" if llm_enabled else "⚪ Disabled")
-
+        llm_text = "Enabled" if llm_enabled else "Disabled"
+        llm_color = BRAND_BLUE if llm_enabled else "#9CA3AF"
+        st.markdown(metric_card("LLM", llm_text, llm_color), unsafe_allow_html=True)
     with col6:
-        tokens = result.metadata.get("llm_tokens_used", 0)
-        st.metric("LLM Tokens", f"{tokens:,}" if tokens else "-")
-
+        st.markdown(metric_card("LLM Tokens", f"{tokens:,}" if tokens else "-", BRAND_BLUE), unsafe_allow_html=True)
     with col7:
-        review_status = "N/A"
-        if result.review_result:
-            approval = result.review_result.get("approval", "unknown")
-            review_status = approval.replace("_", " ").title()
-        st.metric("Review", review_status)
-
+        rev_color = BRAND_TEAL if "green" in review_status.lower() else (BRAND_AMBER if "yellow" in review_status.lower() else BRAND_PURPLE)
+        st.markdown(metric_card("Review", review_status, rev_color), unsafe_allow_html=True)
     with col8:
-        model = result.metadata.get("llm_model", "none")
-        st.metric("Model", model if model != "none" else "-")
+        st.markdown(metric_card("Model", model if model != "none" else "-", BRAND_PURPLE), unsafe_allow_html=True)
 
-    # Errors and warnings
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
+    # --- Errors and warnings ---
     if result.errors:
         st.error("**Errors:**\n" + "\n".join(f"- {e}" for e in result.errors))
 
     if result.warnings:
         st.warning("**Warnings:**\n" + "\n".join(f"- {w}" for w in result.warnings))
 
-    # Download All as ZIP button
+    # --- Download All as ZIP ---
     if result.success:
         zip_data = create_results_zip(result)
         if zip_data:
             trial_id = result.metadata.get("trial_id", "output")
             st.download_button(
-                "📦 Download All Results (ZIP)",
+                "Download All Results (ZIP)",
                 zip_data,
                 file_name=f"{trial_id}_harmonization_results.zip",
                 mime="application/zip",
                 type="primary"
             )
 
-    # Tabs for detailed results (matching v2 structure)
-    tabs = st.tabs(["📋 Harmonized Data", "⚠️ QC Report", "🔎 LLM Review", "🔄 Transformations", "📦 Downloads"])
+    # --- Tabs for detailed results ---
+    tabs = st.tabs(["Harmonized Data", "QC Report", "LLM Review", "Transformations", "Downloads"])
 
     with tabs[0]:
         if result.harmonized_data is not None:
             st.dataframe(result.harmonized_data, use_container_width=True)
-
-            # Download button
             csv = result.harmonized_data.to_csv(index=False)
             st.download_button(
-                "⬇️ Download Harmonized Data",
+                "Download Harmonized Data",
                 csv,
                 file_name="harmonized_data.csv",
                 mime="text/csv"
@@ -621,72 +903,61 @@ def render_results(result: PipelineResult):
     with tabs[1]:
         if result.qc_report is not None and len(result.qc_report) > 0:
             st.dataframe(result.qc_report, use_container_width=True)
-
             csv = result.qc_report.to_csv(index=False)
             st.download_button(
-                "⬇️ Download QC Report",
+                "Download QC Report",
                 csv,
                 file_name="qc_report.csv",
                 mime="text/csv"
             )
         else:
-            st.success("No QC issues found! ✨")
+            st.success("No QC issues found.")
 
     with tabs[2]:
         if result.review_result:
             review = result.review_result
 
-            # Show STOPLIGHT status (new v3 format)
-            stoplight = review.get("stoplight") or review.get("approval", "unknown")
+            # Branded stoplight panel (replaces emoji-based display)
+            stoplight_level = review.get("stoplight") or review.get("approval", "unknown")
+            reason = review.get("reason", "")
+            core_present = review.get("core_variables_present", [])
+            core_missing = review.get("core_variables_missing", [])
 
-            if stoplight.upper() == "GREEN":
-                st.success(f"🟢 **STOPLIGHT: GREEN**")
-                st.markdown("All 5 core variables present and properly formatted.")
-            elif stoplight.upper() == "YELLOW":
-                st.warning(f"🟡 **STOPLIGHT: YELLOW**")
-                st.markdown("Missing 1-2 core variables or formatting issues detected.")
-            elif stoplight.upper() == "RED":
-                st.error(f"🔴 **STOPLIGHT: RED**")
-                st.markdown("Missing 3+ core variables.")
-            else:
-                st.info(f"🔍 **LLM Review: {stoplight.upper()}**")
+            st.markdown(
+                stoplight_panel(stoplight_level, reason, core_present, core_missing or None),
+                unsafe_allow_html=True,
+            )
 
-            # Show core variables status
-            if "core_variables_present" in review:
-                st.markdown(f"**Core Variables Present:** {', '.join(review['core_variables_present'])}")
-            if "core_variables_missing" in review:
-                missing = review['core_variables_missing']
-                if missing:
-                    st.markdown(f"**Core Variables Missing:** {', '.join(missing)}")
-
-            # Show quality assessment
+            # Quality assessment
             if "overall_quality" in review:
-                st.markdown(f"**Quality Rating:** {review['overall_quality']}")
+                st.markdown(
+                    f'<p style="margin:12px 0 4px; font-size:0.8rem; color:#6B7280; '
+                    f'text-transform:uppercase; letter-spacing:0.05em;">Quality Rating</p>'
+                    f'<p style="color:{BRAND_NAVY}; font-weight:600; font-family:Barlow Semi Condensed,sans-serif;">'
+                    f'{review["overall_quality"]}</p>',
+                    unsafe_allow_html=True,
+                )
 
-            # Show reason
-            if "reason" in review:
-                st.markdown(f"**Summary:** {review['reason']}")
-
-            # Show formatting issues
+            # Formatting issues
             if review.get("formatting_issues"):
-                st.subheader("Formatting Issues")
-                for issue in review["formatting_issues"]:
-                    st.markdown(f"- {issue}")
-
-            # Show critical issues
-            if review.get("critical_issues"):
-                st.subheader("Critical Issues")
-                for issue in review["critical_issues"]:
-                    if isinstance(issue, dict):
-                        st.markdown(f"- {issue.get('issue', issue)}")
-                    else:
+                with st.expander("Formatting Issues"):
+                    for issue in review["formatting_issues"]:
                         st.markdown(f"- {issue}")
 
-            # Show recommendations
+            # Critical issues
+            if review.get("critical_issues"):
+                with st.expander("Critical Issues"):
+                    for issue in review["critical_issues"]:
+                        if isinstance(issue, dict):
+                            st.markdown(f"- {issue.get('issue', issue)}")
+                        else:
+                            st.markdown(f"- {issue}")
+
+            # Recommendations
             if review.get("recommendations"):
-                st.subheader("Recommendations")
-                for rec in review["recommendations"]:
-                    st.markdown(f"- {rec}")
+                with st.expander("Recommendations"):
+                    for rec in review["recommendations"]:
+                        st.markdown(f"- {rec}")
 
             # Full details
             with st.expander("Full Review Details"):
@@ -697,7 +968,6 @@ def render_results(result: PipelineResult):
     with tabs[3]:
         st.subheader("Variable Transformations")
         if result.lineage:
-            # Convert lineage to DataFrame with v2 column names
             lineage_data = []
             for entry in result.lineage:
                 lineage_data.append({
@@ -711,7 +981,6 @@ def render_results(result: PipelineResult):
                     "missing_count": entry.get("missing_count", 0),
                     "non_null_count": entry.get("non_null_count", 0)
                 })
-
             lineage_df = pd.DataFrame(lineage_data)
             st.dataframe(lineage_df, use_container_width=True)
         else:
@@ -719,8 +988,6 @@ def render_results(result: PipelineResult):
 
     with tabs[4]:
         st.subheader("Downloads")
-
-        # Individual downloads
         col1, col2 = st.columns(2)
 
         with col1:
@@ -728,7 +995,7 @@ def render_results(result: PipelineResult):
                 trial_id = result.metadata.get("trial_id", "output")
                 csv = result.harmonized_data.to_csv(index=False)
                 st.download_button(
-                    "📋 Harmonized Data (CSV)",
+                    "Harmonized Data (CSV)",
                     csv,
                     file_name=f"{trial_id}_harmonized.csv",
                     mime="text/csv"
@@ -737,18 +1004,17 @@ def render_results(result: PipelineResult):
             if result.qc_report is not None and len(result.qc_report) > 0:
                 qc_csv = result.qc_report.to_csv(index=False)
                 st.download_button(
-                    "⚠️ QC Report (CSV)",
+                    "QC Report (CSV)",
                     qc_csv,
                     file_name=f"{trial_id}_qc_report.csv",
                     mime="text/csv"
                 )
 
         with col2:
-            # DOCX Transformation Report
             try:
                 docx_bytes = create_transformation_report_docx(result)
                 st.download_button(
-                    "📄 Transformation Report (DOCX)",
+                    "Transformation Report (DOCX)",
                     docx_bytes,
                     file_name=f"{trial_id}_transformation_report.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -756,19 +1022,18 @@ def render_results(result: PipelineResult):
             except Exception as e:
                 st.warning(f"Could not generate DOCX report: {e}")
 
-            # All as ZIP
             if result.success:
                 zip_data = create_results_zip(result)
                 if zip_data:
                     st.download_button(
-                        "📦 All Results (ZIP)",
+                        "All Results (ZIP)",
                         zip_data,
                         file_name=f"{trial_id}_harmonization_results.zip",
                         mime="application/zip"
                     )
 
     # Metadata
-    with st.expander("📋 Metadata"):
+    with st.expander("Metadata"):
         st.json(result.metadata)
 
 
@@ -839,22 +1104,9 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict, data_dict_file=None
     # Create a progress callback that updates Streamlit elements
     def streamlit_progress_callback(stage: str, status: str, message: str, progress: float):
         """Update Streamlit progress elements in real-time."""
-        stage_emoji = {
-            "init": "🔧",
-            "ingest": "📥",
-            "map": "🗺️",
-            "harmonize": "✨",
-            "qc": "✅",
-            "review": "🔎",
-            "finalize": "📦",
-            "complete": "🎉",
-            "error": "❌"
-        }
-        emoji = stage_emoji.get(stage, "⏳")
-
         # Update progress bar (clamp to 0-1 range)
         progress_value = max(0.0, min(1.0, progress))
-        progress_bar.progress(progress_value, text=f"{emoji} {stage.upper()}: {message}")
+        progress_bar.progress(progress_value, text=f"{stage.upper()}: {message}")
 
         # Also log to session state for history
         st.session_state.progress_log.append({
@@ -877,12 +1129,12 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict, data_dict_file=None
 
     # Parse data dictionary using deterministic parser (v2 approach)
     if dict_df is not None and data_dict is None:
-        progress_bar.progress(0.05, text="🔧 INIT: Parsing data dictionary...")
+        progress_bar.progress(0.05, text="INIT: Parsing data dictionary...")
 
         try:
             data_dict = parse_data_dictionary(dict_df)
             if data_dict:
-                st.success(f"✅ Dictionary parsed: {len(data_dict)} variables extracted")
+                st.success(f"Dictionary parsed: {len(data_dict)} variables extracted")
                 logger.info(f"Parsed dictionary variables: {list(data_dict.keys())}")
                 for var, info in data_dict.items():
                     logger.info(f"  {var}: {list(info.get('codes', {}).keys())}")
@@ -910,9 +1162,9 @@ def run_pipeline(uploaded_file, trial_id: str, config: dict, data_dict_file=None
 
     # Clear progress elements after completion
     if result.success:
-        progress_bar.progress(1.0, text="🎉 Pipeline complete!")
+        progress_bar.progress(1.0, text="Pipeline complete")
     else:
-        progress_bar.progress(1.0, text="❌ Pipeline failed")
+        progress_bar.progress(1.0, text="Pipeline failed")
         if result.errors:
             for err in result.errors:
                 st.error(f"Error: {err}")
@@ -925,9 +1177,22 @@ def main():
     """Main application entry point."""
     init_session_state()
 
-    # Header
-    st.title("🔬 Concordia Pipeline v3")
-    st.markdown("*RAG-Enhanced Clinical Trial Data Harmonization*")
+    # Inject brand CSS
+    inject_brand_css()
+
+    # Branded header
+    st.markdown(f"""
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:4px;">
+        <div>
+            <h1 style="margin:0; font-size:1.8rem; font-family:Barlow Semi Condensed,sans-serif;
+                        font-weight:700; color:{BRAND_NAVY} !important;">Concordia Pipeline v3</h1>
+            <p style="margin:2px 0 0; color:{BRAND_BLUE}; font-weight:500;
+                      font-family:Barlow,sans-serif; font-size:0.95rem;">
+                RAG-Enhanced Clinical Trial Data Harmonization
+            </p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     if not PIPELINE_AVAILABLE:
         st.error(f"Pipeline components not available: {IMPORT_ERROR}")
@@ -945,14 +1210,13 @@ def main():
 
         if uploaded_file is not None:
             # Show file preview
-            with st.expander("📄 File Preview", expanded=True):
+            with st.expander("File Preview", expanded=True):
                 try:
                     if uploaded_file.name.endswith('.csv'):
                         preview_df = pd.read_csv(uploaded_file, nrows=5)
                     elif uploaded_file.name.endswith(('.xlsx', '.xls')):
                         preview_df = pd.read_excel(uploaded_file, nrows=5)
                     elif uploaded_file.name.endswith('.sas7bdat'):
-                        # For SAS files, read full file then take head (pyreadstat doesn't support nrows)
                         try:
                             import pyreadstat
                             preview_df, _ = pyreadstat.read_sas7bdat(uploaded_file)
@@ -970,7 +1234,7 @@ def main():
 
                     if preview_df is not None:
                         st.dataframe(preview_df, use_container_width=True)
-                        st.caption(f"Showing first 5 rows • {len(preview_df.columns)} columns")
+                        st.caption(f"Showing first 5 rows | {len(preview_df.columns)} columns")
 
                     # Reset file position for later reading
                     uploaded_file.seek(0)
@@ -978,10 +1242,10 @@ def main():
                     st.error(f"Error previewing file: {e}")
 
     with col2:
-        st.subheader("🚀 Run Pipeline")
+        st.subheader("Run Pipeline")
 
         if uploaded_file is not None:
-            if st.button("▶️ Start Harmonization", type="primary", use_container_width=True):
+            if st.button("Start Harmonization", type="primary", use_container_width=True):
                 result = run_pipeline(uploaded_file, trial_id, config, data_dict_file)
         else:
             st.info("Upload a file to begin")
