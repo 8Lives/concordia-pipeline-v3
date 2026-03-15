@@ -428,7 +428,10 @@ class SpecificationRetriever:
             content = results.documents[0]
             if "Output Schema:" in content:
                 schema_line = content.split("Output Schema:")[1].split("\n")[0]
-                variables = [v.strip() for v in schema_line.split(",")]
+                variables = [
+                    v.strip().rstrip(".")
+                    for v in schema_line.split(",")
+                ]
                 return variables
 
         # Fallback to hardcoded order

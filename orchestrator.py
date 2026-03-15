@@ -355,8 +355,14 @@ class PipelineOrchestrator:
             result.harmonized_data = harmonized_df if harmonized_df is not None else context.get("df")
 
             # Ensure DOMAIN column is always "DM" (defensive fix)
-            if result.harmonized_data is not None and "DOMAIN" in result.harmonized_data.columns:
-                result.harmonized_data["DOMAIN"] = "DM"
+            if result.harmonized_data is not None:
+                # Fix stale RAG index that may have produced "DOMAIN." column
+                if "DOMAIN." in result.harmonized_data.columns:
+                    result.harmonized_data.rename(
+                        columns={"DOMAIN.": "DOMAIN"}, inplace=True
+                    )
+                if "DOMAIN" in result.harmonized_data.columns:
+                    result.harmonized_data["DOMAIN"] = "DM"
 
             # Append unmapped source columns to harmonized output
             if result.harmonized_data is not None and source_df is not None:

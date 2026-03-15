@@ -265,7 +265,7 @@ Grain: One row per unique subject within a trial. Uniqueness is enforced on (TRI
         # Output schema
         chunks.append(SpecChunk(
             id=self._generate_id("schema", "dm_output_schema"),
-            content="""Output Schema: TRIAL, SUBJID, SEX, RACE, AGE, AGEU, AGEGP, ETHNIC, COUNTRY, SITEID, STUDYID, USUBJID, ARMCD, ARM, BRTHDTC, RFSTDTC, RFENDTC, DOMAIN.
+            content="""Output Schema: TRIAL, SUBJID, SEX, RACE, AGE, AGEU, AGEGP, ETHNIC, COUNTRY, SITEID, STUDYID, USUBJID, ARMCD, ARM, BRTHDTC, RFSTDTC, RFENDTC, DOMAIN
 Required Variables: TRIAL, SUBJID, SEX, RACE
 Conditional Required: AGE (required if present/derivable), AGEGP (required if AGE not available)""",
             metadata={

@@ -465,7 +465,10 @@ class MapAgent(AgentBase):
                 )
             elif operation == "Constant":
                 value = entry.get("details", {}).get("value")
-                mapped_data[output_var] = value
+                # Explicit Series to avoid scalar-broadcast issues
+                mapped_data[output_var] = pd.Series(
+                    [value] * len(df), index=df.index
+                )
             else:
                 # Empty column - will be populated in harmonize stage if derivable
                 mapped_data[output_var] = None
