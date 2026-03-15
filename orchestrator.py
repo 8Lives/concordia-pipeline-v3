@@ -295,6 +295,9 @@ class PipelineOrchestrator:
                 result.errors.append(f"Ingest failed: {ingest_result.error}")
                 return result
 
+            # Preserve original source DataFrame before mapping replaces it
+            source_df = context.get("df").copy()
+
             # Stage 2: Map
             self._update_progress("map", "running", "Mapping columns...", 0.3)
             map_result = self._run_map(context)
@@ -350,6 +353,32 @@ class PipelineOrchestrator:
             # Use explicit None check to avoid DataFrame truth value ambiguity
             harmonized_df = context.get("harmonized_df")
             result.harmonized_data = harmonized_df if harmonized_df is not None else context.get("df")
+
+            # Ensure DOMAIN column is always "DM" (defensive fix)
+            if result.harmonized_data is not None and "DOMAIN" in result.harmonized_data.columns:
+                result.harmonized_data["DOMAIN"] = "DM"
+
+            # Append unmapped source columns to harmonized output
+            if result.harmonized_data is not None and source_df is not None:
+                mapping_log = context.get("mapping_log", [])
+                mapped_sources = {
+                    m.get("source_column")
+                    for m in mapping_log
+                    if m.get("source_column")
+                }
+                unmapped_cols = [
+                    c for c in source_df.columns
+                    if c not in mapped_sources
+                    and c.upper() not in result.harmonized_data.columns
+                ]
+                if unmapped_cols:
+                    for col in unmapped_cols:
+                        result.harmonized_data[col] = source_df[col].values
+                    logger.info(
+                        f"Appended {len(unmapped_cols)} unmapped source columns: "
+                        f"{unmapped_cols}"
+                    )
+
             result.success = True
             result.metadata = {
                 "trial_id": context.get("trial_id"),

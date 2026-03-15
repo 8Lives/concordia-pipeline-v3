@@ -269,8 +269,10 @@ def status_badge(label: str, level: str = "info") -> str:
     )
 
 
-def metric_card(label: str, value: str, accent: str = BRAND_BLUE) -> str:
+def metric_card(label: str, value: str, accent: str = BRAND_BLUE,
+                value_color: str = "") -> str:
     """Render a metric as a branded card with colored top-border accent."""
+    val_color = value_color or BRAND_NAVY
     return f"""
     <div style="
         background: white;
@@ -287,7 +289,7 @@ def metric_card(label: str, value: str, accent: str = BRAND_BLUE) -> str:
         <p style="margin:0; font-size:0.75rem; color:#6B7280; font-family:Barlow,sans-serif;
                    text-transform:uppercase; letter-spacing:0.06em;">{label}</p>
         <p style="margin:6px 0 0; font-size:1.35rem; font-weight:700;
-                   font-family:Barlow Semi Condensed,sans-serif; color:{BRAND_NAVY};">{value}</p>
+                   font-family:Barlow Semi Condensed,sans-serif; color:{val_color};">{value}</p>
     </div>
     """
 
@@ -305,8 +307,9 @@ def stoplight_panel(level: str, reason: str = "",
     <div style="background:{bg}; border-left:4px solid {color};
                 border-radius:0 8px 8px 0; padding:20px; margin:12px 0;">
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            <span style="width:14px; height:14px; border-radius:50%;
-                         background:{color}; display:inline-block;"></span>
+            <span style="width:18px; height:18px; border-radius:50%;
+                         background:{color}; display:inline-block;
+                         box-shadow:0 0 8px {color}88;"></span>
             <span style="font-family:Barlow Semi Condensed,sans-serif; font-weight:700;
                          font-size:1.1rem; color:{color};">
                 REVIEW: {level_upper}
@@ -847,6 +850,12 @@ def create_transformation_report_docx(result: PipelineResult) -> bytes:
 
 def render_results(result: PipelineResult):
     """Render pipeline results with branded card metrics and stoplight panel."""
+    # Show completed pipeline stepper above results
+    stage_order = ["INGEST", "MAP", "HARMONIZE", "QC", "REVIEW"]
+    st.markdown(
+        pipeline_stepper(stage_order, len(stage_order), failed=not result.success),
+        unsafe_allow_html=True,
+    )
     st.header("Results")
 
     # --- Row 1: Summary metric cards (colored top-border accents) ---
@@ -859,7 +868,7 @@ def render_results(result: PipelineResult):
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.markdown(metric_card("Status", status_text, status_color), unsafe_allow_html=True)
+        st.markdown(metric_card("Status", status_text, status_color, value_color=status_color), unsafe_allow_html=True)
     with col2:
         st.markdown(metric_card("Rows Processed", str(rows), BRAND_BLUE), unsafe_allow_html=True)
     with col3:
@@ -958,11 +967,20 @@ def render_results(result: PipelineResult):
 
             # Quality assessment
             if "overall_quality" in review:
+                quality = review["overall_quality"]
+                q_lower = quality.lower() if isinstance(quality, str) else ""
+                if q_lower in ("good", "excellent"):
+                    q_level = "success"
+                elif q_lower in ("acceptable", "fair"):
+                    q_level = "warning"
+                elif q_lower in ("poor", "bad", "unacceptable"):
+                    q_level = "error"
+                else:
+                    q_level = "info"
                 st.markdown(
-                    f'<p style="margin:12px 0 4px; font-size:0.8rem; color:#6B7280; '
+                    f'<p style="margin:12px 0 6px; font-size:0.8rem; color:#6B7280; '
                     f'text-transform:uppercase; letter-spacing:0.05em;">Quality Rating</p>'
-                    f'<p style="color:{BRAND_NAVY}; font-weight:600; font-family:Barlow Semi Condensed,sans-serif;">'
-                    f'{review["overall_quality"]}</p>',
+                    f'{status_badge(quality.title() if isinstance(quality, str) else str(quality), q_level)}',
                     unsafe_allow_html=True,
                 )
 
