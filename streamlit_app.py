@@ -60,6 +60,15 @@ def load_secrets_to_env():
 # Load secrets before importing pipeline components
 secrets_loaded = load_secrets_to_env()
 
+# Force light theme before any rendering — this replaces .streamlit/config.toml
+# so the theme works regardless of the user's system dark/light preference.
+from streamlit import config as _stconfig
+_stconfig.set_option("theme.base", "light")
+_stconfig.set_option("theme.primaryColor", "#3B63A8")
+_stconfig.set_option("theme.backgroundColor", "#FFFFFF")
+_stconfig.set_option("theme.secondaryBackgroundColor", "#F7F8FA")
+_stconfig.set_option("theme.textColor", "#1A1F3C")
+
 # Page configuration
 st.set_page_config(
     page_title="Concordia Pipeline v3",
@@ -87,10 +96,6 @@ def inject_brand_css():
 
     This embeds the full theme directly — no .streamlit/config.toml needed.
     """
-    # Force light theme programmatically via query params (works on Streamlit Cloud
-    # regardless of user's system dark/light preference or missing config.toml)
-    st.query_params.setdefault("embed_options", "light_theme")
-
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&display=swap');
