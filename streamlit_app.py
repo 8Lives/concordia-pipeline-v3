@@ -87,6 +87,10 @@ def inject_brand_css():
 
     This embeds the full theme directly — no .streamlit/config.toml needed.
     """
+    # Force light theme programmatically via query params (works on Streamlit Cloud
+    # regardless of user's system dark/light preference or missing config.toml)
+    st.query_params.setdefault("embed_options", "light_theme")
+
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&display=swap');
