@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 class LLMModel(Enum):
     """Available Claude models."""
-    OPUS = "claude-opus-4-5-20251101"
-    SONNET = "claude-sonnet-4-20250514"
+    OPUS = "claude-opus-4-6"
+    SONNET = "claude-sonnet-4-6"
     HAIKU = "claude-haiku-4-5-20251001"
 
 
