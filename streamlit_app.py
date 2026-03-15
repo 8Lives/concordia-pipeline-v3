@@ -83,15 +83,43 @@ BRAND_AMBER = "#D4A017"
 
 
 def inject_brand_css():
-    """Inject CRDSA brand CSS overrides for a light-themed, professional UI."""
+    """Inject CRDSA brand CSS overrides for a light-themed, professional UI.
+
+    This embeds the full theme directly — no .streamlit/config.toml needed.
+    """
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&display=swap');
+
+    /* ---- Force light theme via Streamlit CSS variables ---- */
+    :root, [data-testid="stAppViewContainer"],
+    .stApp, [data-testid="stHeader"],
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"] {
+        --primary-color: #3B63A8;
+        --background-color: #FFFFFF;
+        --secondary-background-color: #F7F8FA;
+        --text-color: #1A1F3C;
+    }
+    .stApp {
+        background-color: #FFFFFF !important;
+    }
+    [data-testid="stAppViewContainer"] {
+        background-color: #FFFFFF !important;
+    }
+    [data-testid="stHeader"] {
+        background-color: #FFFFFF !important;
+    }
+    [data-testid="stBottomBlockContainer"],
+    [data-testid="stMainBlockContainer"] {
+        background-color: #FFFFFF !important;
+    }
 
     /* ---- Global font override ---- */
     html, body, [class*="css"] {
         font-family: 'Barlow', sans-serif;
         color: #3A3A3C;
+        background-color: #FFFFFF;
     }
 
     /* ---- Headings ---- */
