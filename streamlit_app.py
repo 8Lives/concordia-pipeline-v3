@@ -142,25 +142,16 @@ def inject_brand_css():
     section[data-testid="stSidebar"] {
         background-color: #1A1F3C;
     }
-    section[data-testid="stSidebar"] h1,
-    section[data-testid="stSidebar"] h2,
-    section[data-testid="stSidebar"] h3,
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] .stMarkdown,
-    section[data-testid="stSidebar"] .stMarkdown p,
-    section[data-testid="stSidebar"] span,
-    section[data-testid="stSidebar"] .stCaption,
-    section[data-testid="stSidebar"] small {
+    /* Force ALL text inside sidebar to light — covers every element Streamlit generates */
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] * {
         color: #F0F0F1 !important;
     }
     section[data-testid="stSidebar"] hr {
         border-color: rgba(240,240,241,0.15);
     }
-    section[data-testid="stSidebar"] .stCheckbox label span {
-        color: #F0F0F1 !important;
-    }
-    section[data-testid="stSidebar"] .stSelectbox label,
-    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] {
+    /* Ensure select dropdown text is also light */
+    section[data-testid="stSidebar"] [data-baseweb="select"] * {
         color: #F0F0F1 !important;
     }
 
